@@ -47,7 +47,6 @@ public final class EchoServer {
         } else {
             sslCtx = null;
         }
-
         // Configure the server.
         EventLoopGroup bossGroup = new NioEventLoopGroup(1);
         EventLoopGroup workerGroup = new NioEventLoopGroup();
