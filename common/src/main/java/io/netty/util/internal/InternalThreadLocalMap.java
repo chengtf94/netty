@@ -1,19 +1,3 @@
-/*
- * Copyright 2014 The Netty Project
- *
- * The Netty Project licenses this file to you under the Apache License,
- * version 2.0 (the "License"); you may not use this file except in compliance
- * with the License. You may obtain a copy of the License at:
- *
- *   https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
- * License for the specific language governing permissions and limitations
- * under the License.
- */
-
 package io.netty.util.internal;
 
 import io.netty.util.concurrent.FastThreadLocal;
@@ -37,7 +21,6 @@ import java.util.WeakHashMap;
  * unless you know what you are doing.
  */
 public final class InternalThreadLocalMap extends UnpaddedInternalThreadLocalMap {
-
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(InternalThreadLocalMap.class);
 
     private static final int DEFAULT_ARRAY_LIST_INITIAL_CAPACITY = 8;
@@ -45,26 +28,35 @@ public final class InternalThreadLocalMap extends UnpaddedInternalThreadLocalMap
     private static final int STRING_BUILDER_MAX_SIZE;
     private static final int HANDLER_SHARABLE_CACHE_INITIAL_CAPACITY = 4;
     private static final int INDEXED_VARIABLE_TABLE_INITIAL_SIZE = 32;
-
     public static final Object UNSET = new Object();
-
     private BitSet cleanerFlags;
-
     static {
         STRING_BUILDER_INITIAL_SIZE =
                 SystemPropertyUtil.getInt("io.netty.threadLocalMap.stringBuilder.initialSize", 1024);
         logger.debug("-Dio.netty.threadLocalMap.stringBuilder.initialSize: {}", STRING_BUILDER_INITIAL_SIZE);
-
         STRING_BUILDER_MAX_SIZE = SystemPropertyUtil.getInt("io.netty.threadLocalMap.stringBuilder.maxSize", 1024 * 4);
         logger.debug("-Dio.netty.threadLocalMap.stringBuilder.maxSize: {}", STRING_BUILDER_MAX_SIZE);
     }
 
-    public static InternalThreadLocalMap getIfSet() {
-        Thread thread = Thread.currentThread();
-        if (thread instanceof FastThreadLocalThread) {
-            return ((FastThreadLocalThread) thread).threadLocalMap();
+    /**
+     * 构造方法
+     */
+    private InternalThreadLocalMap() {
+        super(newIndexedVariableTable());
+    }
+    private static Object[] newIndexedVariableTable() {
+        Object[] array = new Object[INDEXED_VARIABLE_TABLE_INITIAL_SIZE];
+        Arrays.fill(array, UNSET);
+        return array;
+    }
+
+    public static int nextVariableIndex() {
+        int index = nextIndex.getAndIncrement();
+        if (index < 0) {
+            nextIndex.decrementAndGet();
+            throw new IllegalStateException("too many thread-local indexed variables");
         }
-        return slowThreadLocalMap.get();
+        return index;
     }
 
     public static InternalThreadLocalMap get() {
@@ -75,7 +67,6 @@ public final class InternalThreadLocalMap extends UnpaddedInternalThreadLocalMap
             return slowGet();
         }
     }
-
     private static InternalThreadLocalMap fastGet(FastThreadLocalThread thread) {
         InternalThreadLocalMap threadLocalMap = thread.threadLocalMap();
         if (threadLocalMap == null) {
@@ -83,7 +74,6 @@ public final class InternalThreadLocalMap extends UnpaddedInternalThreadLocalMap
         }
         return threadLocalMap;
     }
-
     private static InternalThreadLocalMap slowGet() {
         ThreadLocal<InternalThreadLocalMap> slowThreadLocalMap = UnpaddedInternalThreadLocalMap.slowThreadLocalMap;
         InternalThreadLocalMap ret = slowThreadLocalMap.get();
@@ -92,6 +82,64 @@ public final class InternalThreadLocalMap extends UnpaddedInternalThreadLocalMap
             slowThreadLocalMap.set(ret);
         }
         return ret;
+    }
+
+    public boolean setIndexedVariable(int index, Object value) {
+        Object[] lookup = indexedVariables;
+        if (index < lookup.length) {
+            Object oldValue = lookup[index];
+            lookup[index] = value;
+            return oldValue == UNSET;
+        } else {
+            // 扩容
+            expandIndexedVariableTableAndSet(index, value);
+            return true;
+        }
+    }
+    private void expandIndexedVariableTableAndSet(int index, Object value) {
+        Object[] oldArray = indexedVariables;
+        final int oldCapacity = oldArray.length;
+        int newCapacity = index;
+        newCapacity |= newCapacity >>>  1;
+        newCapacity |= newCapacity >>>  2;
+        newCapacity |= newCapacity >>>  4;
+        newCapacity |= newCapacity >>>  8;
+        newCapacity |= newCapacity >>> 16;
+        newCapacity ++;
+        Object[] newArray = Arrays.copyOf(oldArray, newCapacity);
+        Arrays.fill(newArray, oldCapacity, newArray.length, UNSET);
+        newArray[index] = value;
+        indexedVariables = newArray;
+    }
+
+    public Object indexedVariable(int index) {
+        Object[] lookup = indexedVariables;
+        return index < lookup.length? lookup[index] : UNSET;
+    }
+
+    public Object removeIndexedVariable(int index) {
+        Object[] lookup = indexedVariables;
+        if (index < lookup.length) {
+            Object v = lookup[index];
+            lookup[index] = UNSET;
+            return v;
+        } else {
+            return UNSET;
+        }
+    }
+
+
+
+
+
+
+
+    public static InternalThreadLocalMap getIfSet() {
+        Thread thread = Thread.currentThread();
+        if (thread instanceof FastThreadLocalThread) {
+            return ((FastThreadLocalThread) thread).threadLocalMap();
+        }
+        return slowThreadLocalMap.get();
     }
 
     public static void remove() {
@@ -107,14 +155,7 @@ public final class InternalThreadLocalMap extends UnpaddedInternalThreadLocalMap
         slowThreadLocalMap.remove();
     }
 
-    public static int nextVariableIndex() {
-        int index = nextIndex.getAndIncrement();
-        if (index < 0) {
-            nextIndex.decrementAndGet();
-            throw new IllegalStateException("too many thread-local indexed variables");
-        }
-        return index;
-    }
+
 
     public static int lastVariableIndex() {
         return nextIndex.get() - 1;
@@ -124,15 +165,9 @@ public final class InternalThreadLocalMap extends UnpaddedInternalThreadLocalMap
     // With CompressedOops enabled, an instance of this class should occupy at least 128 bytes.
     public long rp1, rp2, rp3, rp4, rp5, rp6, rp7, rp8, rp9;
 
-    private InternalThreadLocalMap() {
-        super(newIndexedVariableTable());
-    }
 
-    private static Object[] newIndexedVariableTable() {
-        Object[] array = new Object[INDEXED_VARIABLE_TABLE_INITIAL_SIZE];
-        Arrays.fill(array, UNSET);
-        return array;
-    }
+
+
 
     public int size() {
         int count = 0;
@@ -286,53 +321,16 @@ public final class InternalThreadLocalMap extends UnpaddedInternalThreadLocalMap
         this.localChannelReaderStackDepth = localChannelReaderStackDepth;
     }
 
-    public Object indexedVariable(int index) {
-        Object[] lookup = indexedVariables;
-        return index < lookup.length? lookup[index] : UNSET;
-    }
+
 
     /**
      * @return {@code true} if and only if a new thread-local variable has been created
      */
-    public boolean setIndexedVariable(int index, Object value) {
-        Object[] lookup = indexedVariables;
-        if (index < lookup.length) {
-            Object oldValue = lookup[index];
-            lookup[index] = value;
-            return oldValue == UNSET;
-        } else {
-            expandIndexedVariableTableAndSet(index, value);
-            return true;
-        }
-    }
 
-    private void expandIndexedVariableTableAndSet(int index, Object value) {
-        Object[] oldArray = indexedVariables;
-        final int oldCapacity = oldArray.length;
-        int newCapacity = index;
-        newCapacity |= newCapacity >>>  1;
-        newCapacity |= newCapacity >>>  2;
-        newCapacity |= newCapacity >>>  4;
-        newCapacity |= newCapacity >>>  8;
-        newCapacity |= newCapacity >>> 16;
-        newCapacity ++;
 
-        Object[] newArray = Arrays.copyOf(oldArray, newCapacity);
-        Arrays.fill(newArray, oldCapacity, newArray.length, UNSET);
-        newArray[index] = value;
-        indexedVariables = newArray;
-    }
 
-    public Object removeIndexedVariable(int index) {
-        Object[] lookup = indexedVariables;
-        if (index < lookup.length) {
-            Object v = lookup[index];
-            lookup[index] = UNSET;
-            return v;
-        } else {
-            return UNSET;
-        }
-    }
+
+
 
     public boolean isIndexedVariableSet(int index) {
         Object[] lookup = indexedVariables;
