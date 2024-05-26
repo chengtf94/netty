@@ -1,26 +1,10 @@
-/*
- * Copyright 2012 The Netty Project
- *
- * The Netty Project licenses this file to you under the Apache License,
- * version 2.0 (the "License"); you may not use this file except in compliance
- * with the License. You may obtain a copy of the License at:
- *
- *   https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
- * License for the specific language governing permissions and limitations
- * under the License.
- */
 package io.netty.channel;
 
 import io.netty.util.concurrent.EventExecutorGroup;
 
 /**
- * Special {@link EventExecutorGroup} which allows registering {@link Channel}s that get
- * processed for later selection during the event loop.
- *
+ * EventLoopGroup：EventLoopGroup正是Reactor组的接口定义，负责管理Reactor。
+ * Netty中的Reactor是以Group的形式出现的，Netty中的Channel就是通过EventLoopGroup注册到具体的Reactor上的。
  */
 public interface EventLoopGroup extends EventExecutorGroup {
     /**

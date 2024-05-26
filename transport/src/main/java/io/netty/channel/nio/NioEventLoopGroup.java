@@ -1,18 +1,3 @@
-/*
- * Copyright 2012 The Netty Project
- *
- * The Netty Project licenses this file to you under the Apache License,
- * version 2.0 (the "License"); you may not use this file except in compliance
- * with the License. You may obtain a copy of the License at:
- *
- *   https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
- * License for the specific language governing permissions and limitations
- * under the License.
- */
 package io.netty.channel.nio;
 
 import io.netty.channel.Channel;
@@ -32,38 +17,25 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadFactory;
 
 /**
- * {@link MultithreadEventLoopGroup} implementations which is used for NIO {@link Selector} based {@link Channel}s.
+ * NioEventLoopGroup：基于NIO模型的EventLoopGroup
  */
 public class NioEventLoopGroup extends MultithreadEventLoopGroup {
 
     /**
-     * Create a new instance using the default number of threads, the default {@link ThreadFactory} and
-     * the {@link SelectorProvider} which is returned by {@link SelectorProvider#provider()}.
+     * 构造方法
      */
     public NioEventLoopGroup() {
         this(0);
     }
 
-    /**
-     * Create a new instance using the specified number of threads, {@link ThreadFactory} and the
-     * {@link SelectorProvider} which is returned by {@link SelectorProvider#provider()}.
-     */
     public NioEventLoopGroup(int nThreads) {
         this(nThreads, (Executor) null);
     }
 
-    /**
-     * Create a new instance using the default number of threads, the given {@link ThreadFactory} and the
-     * {@link SelectorProvider} which is returned by {@link SelectorProvider#provider()}.
-     */
     public NioEventLoopGroup(ThreadFactory threadFactory) {
         this(0, threadFactory, SelectorProvider.provider());
     }
 
-    /**
-     * Create a new instance using the specified number of threads, the given {@link ThreadFactory} and the
-     * {@link SelectorProvider} which is returned by {@link SelectorProvider#provider()}.
-     */
     public NioEventLoopGroup(int nThreads, ThreadFactory threadFactory) {
         this(nThreads, threadFactory, SelectorProvider.provider());
     }
@@ -72,17 +44,13 @@ public class NioEventLoopGroup extends MultithreadEventLoopGroup {
         this(nThreads, executor, SelectorProvider.provider());
     }
 
-    /**
-     * Create a new instance using the specified number of threads, the given {@link ThreadFactory} and the given
-     * {@link SelectorProvider}.
-     */
     public NioEventLoopGroup(
             int nThreads, ThreadFactory threadFactory, final SelectorProvider selectorProvider) {
         this(nThreads, threadFactory, selectorProvider, DefaultSelectStrategyFactory.INSTANCE);
     }
 
     public NioEventLoopGroup(int nThreads, ThreadFactory threadFactory,
-        final SelectorProvider selectorProvider, final SelectStrategyFactory selectStrategyFactory) {
+                             final SelectorProvider selectorProvider, final SelectStrategyFactory selectStrategyFactory) {
         super(nThreads, threadFactory, selectorProvider, selectStrategyFactory, RejectedExecutionHandlers.reject());
     }
 
@@ -91,6 +59,13 @@ public class NioEventLoopGroup extends MultithreadEventLoopGroup {
         this(nThreads, executor, selectorProvider, DefaultSelectStrategyFactory.INSTANCE);
     }
 
+    /**
+     * @param nThreads              当前要创建的Reactor线程组内包含多少个Reactor线程
+     * @param executor              负责启动Reactor线程进而Reactor才可以开始工作
+     * @param selectorProvider      用于创建Selector，每个Reactor中都包含一个Selector，用于轮询注册在该Reactor上的所有Channel上的IO事件。
+     * @param selectStrategyFactory 轮询策略：轮询注册其上的Channel上的IO就绪事件
+     *                              RejectedExecutionHandler 当向Reactor添加异步任务添加失败时，采用的拒绝策略。Reactor的任务不只是监听IO活跃事件和IO任务的处理，还包括对异步任务的处理
+     */
     public NioEventLoopGroup(int nThreads, Executor executor, final SelectorProvider selectorProvider,
                              final SelectStrategyFactory selectStrategyFactory) {
         super(nThreads, executor, selectorProvider, selectStrategyFactory, RejectedExecutionHandlers.reject());
@@ -119,12 +94,21 @@ public class NioEventLoopGroup extends MultithreadEventLoopGroup {
                 rejectedExecutionHandler, taskQueueFactory);
     }
 
+    @Override
+    protected EventLoop newChild(Executor executor, Object... args) throws Exception {
+        EventLoopTaskQueueFactory queueFactory = args.length == 4 ? (EventLoopTaskQueueFactory) args[3] : null;
+        return new NioEventLoop(this, executor, (SelectorProvider) args[0],
+                ((SelectStrategyFactory) args[1]).newSelectStrategy(), (RejectedExecutionHandler) args[2], queueFactory);
+    }
+
+
+
     /**
      * Sets the percentage of the desired amount of time spent for I/O in the child event loops.  The default value is
      * {@code 50}, which means the event loop will try to spend the same amount of time for I/O as for non-I/O tasks.
      */
     public void setIoRatio(int ioRatio) {
-        for (EventExecutor e: this) {
+        for (EventExecutor e : this) {
             ((NioEventLoop) e).setIoRatio(ioRatio);
         }
     }
@@ -134,15 +118,10 @@ public class NioEventLoopGroup extends MultithreadEventLoopGroup {
      * around the  infamous epoll 100% CPU bug.
      */
     public void rebuildSelectors() {
-        for (EventExecutor e: this) {
+        for (EventExecutor e : this) {
             ((NioEventLoop) e).rebuildSelector();
         }
     }
 
-    @Override
-    protected EventLoop newChild(Executor executor, Object... args) throws Exception {
-        EventLoopTaskQueueFactory queueFactory = args.length == 4 ? (EventLoopTaskQueueFactory) args[3] : null;
-        return new NioEventLoop(this, executor, (SelectorProvider) args[0],
-            ((SelectStrategyFactory) args[1]).newSelectStrategy(), (RejectedExecutionHandler) args[2], queueFactory);
-    }
+
 }

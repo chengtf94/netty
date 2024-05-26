@@ -1,19 +1,3 @@
-/*
- * Copyright 2013 The Netty Project
- *
- * The Netty Project licenses this file to you under the Apache License,
- * version 2.0 (the "License"); you may not use this file except in compliance
- * with the License. You may obtain a copy of the License at:
- *
- *   https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
- * License for the specific language governing permissions and limitations
- * under the License.
- */
-
 package io.netty.util.concurrent;
 
 import io.netty.util.internal.ObjectUtil;
@@ -24,18 +8,20 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * A {@link ThreadFactory} implementation with a simple naming rule.
+ * 默认线程工厂：a simple naming rule.
  */
 public class DefaultThreadFactory implements ThreadFactory {
 
     private static final AtomicInteger poolId = new AtomicInteger();
-
     private final AtomicInteger nextId = new AtomicInteger();
     private final String prefix;
     private final boolean daemon;
     private final int priority;
     protected final ThreadGroup threadGroup;
 
+    /**
+     * 构造方法
+     */
     public DefaultThreadFactory(Class<?> poolType) {
         this(poolType, false, Thread.NORM_PRIORITY);
     }
@@ -66,7 +52,6 @@ public class DefaultThreadFactory implements ThreadFactory {
 
     public static String toPoolName(Class<?> poolType) {
         ObjectUtil.checkNotNull(poolType, "poolType");
-
         String poolName = StringUtil.simpleClassName(poolType);
         switch (poolName.length()) {
             case 0:
@@ -84,12 +69,10 @@ public class DefaultThreadFactory implements ThreadFactory {
 
     public DefaultThreadFactory(String poolName, boolean daemon, int priority, ThreadGroup threadGroup) {
         ObjectUtil.checkNotNull(poolName, "poolName");
-
         if (priority < Thread.MIN_PRIORITY || priority > Thread.MAX_PRIORITY) {
             throw new IllegalArgumentException(
                     "priority: " + priority + " (expected: Thread.MIN_PRIORITY <= priority <= Thread.MAX_PRIORITY)");
         }
-
         prefix = poolName + '-' + poolId.incrementAndGet() + '-';
         this.daemon = daemon;
         this.priority = priority;
@@ -108,7 +91,6 @@ public class DefaultThreadFactory implements ThreadFactory {
             if (t.isDaemon() != daemon) {
                 t.setDaemon(daemon);
             }
-
             if (t.getPriority() != priority) {
                 t.setPriority(priority);
             }

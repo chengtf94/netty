@@ -1,21 +1,5 @@
-/*
- * Copyright 2012 The Netty Project
- *
- * The Netty Project licenses this file to you under the Apache License,
- * version 2.0 (the "License"); you may not use this file except in compliance
- * with the License. You may obtain a copy of the License at:
- *
- *   https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
- * License for the specific language governing permissions and limitations
- * under the License.
- */
 package io.netty.channel.nio;
 
-import io.netty.channel.Channel;
 import io.netty.channel.ChannelException;
 import io.netty.channel.EventLoop;
 import io.netty.channel.EventLoopException;
@@ -50,16 +34,17 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * {@link SingleThreadEventLoop} implementation which register the {@link Channel}'s to a
- * {@link Selector} and so does the multi-plexing of these in the event loop.
- *
+ * 基于IO模型的EventLoop：Netty会自动根据操作系统以及版本的不同选择对应的IO多路复用技术实现。
+ * 比如Linux 2.6版本以上用的是Epoll，2.6版本以下用的是Poll，Mac下采用的是Kqueue。
  */
 public final class NioEventLoop extends SingleThreadEventLoop {
-
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(NioEventLoop.class);
 
     private static final int CLEANUP_INTERVAL = 256; // XXX Hard-coded value, but won't need customization.
 
+    /**
+     * Selector优化开关：通过系统变量-D io.netty.noKeySetOptimization指定，默认是开启的，表示需要对JDK NIO原生Selector进行优化。
+     */
     private static final boolean DISABLE_KEY_SET_OPTIMIZATION =
             SystemPropertyUtil.getBoolean("io.netty.noKeySetOptimization", false);
 
@@ -109,12 +94,18 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     }
 
     /**
-     * The NIO {@link Selector}.
+     * unwrappedSelector&SelectedSelectionKeySet装饰类、优化后的JDK NIO 原生Selector： NIO多路复用选择器
      */
     private Selector selector;
     private Selector unwrappedSelector;
+    /**
+     * 通过反射替换selector对象中的selectedKeySet保存就绪的selectKey，该字段为持有selector对象selectedKeys的引用，当IO事件就绪时，直接从这里获取
+     */
     private SelectedSelectionKeySet selectedKeys;
 
+    /**
+     * 创建JDK NIO Selector,ServerSocketChannel
+     */
     private final SelectorProvider provider;
 
     private static final long AWAKE = -1L;
@@ -126,12 +117,18 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     //    other value T    when EL is waiting with wakeup scheduled at time T
     private final AtomicLong nextWakeupNanos = new AtomicLong(AWAKE);
 
+    /**
+     * Selector轮询策略：决定什么时候轮询，什么时候处理IO事件，什么时候执行异步任务
+     */
     private final SelectStrategy selectStrategy;
 
     private volatile int ioRatio = 50;
     private int cancelledKeys;
     private boolean needsToSelectAgain;
 
+    /**
+     * 构造方法
+     */
     NioEventLoop(NioEventLoopGroup parent, Executor executor, SelectorProvider selectorProvider,
                  SelectStrategy strategy, RejectedExecutionHandler rejectedExecutionHandler,
                  EventLoopTaskQueueFactory queueFactory) {
@@ -139,8 +136,11 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 rejectedExecutionHandler);
         this.provider = ObjectUtil.checkNotNull(selectorProvider, "selectorProvider");
         this.selectStrategy = ObjectUtil.checkNotNull(strategy, "selectStrategy");
+        // 创建IO多路复用的Selector
         final SelectorTuple selectorTuple = openSelector();
+        // 通过用SelectedSelectionKeySet装饰后的unwrappedSelector
         this.selector = selectorTuple.selector;
+        // 优化后的JDK NIO 原生Selector
         this.unwrappedSelector = selectorTuple.unwrappedSelector;
     }
 
@@ -151,8 +151,19 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
         return queueFactory.newTaskQueue(DEFAULT_MAX_PENDING_TASKS);
     }
+    private static Queue<Runnable> newTaskQueue0(int maxPendingTasks) {
+        // 创建无界 或 有界任务队列
+        // MpscQueue是由JCTools提供的一个高性能无锁队列，适用于多生产者单消费者的场景，它支持多个生产者线程安全的访问队列，同一时刻只允许一个消费者线程读取队列中的元素。
+        return maxPendingTasks == Integer.MAX_VALUE
+                ? PlatformDependent.<Runnable>newMpscQueue()
+                : PlatformDependent.<Runnable>newMpscQueue(maxPendingTasks);
+    }
 
     private static final class SelectorTuple {
+
+        /**
+         * unwrappedSelector：Netty优化过的JDK NIO原生Selector
+         */
         final Selector unwrappedSelector;
         final Selector selector;
 
@@ -167,18 +178,25 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
     }
 
+    /**
+     * 创建IO多路复用的Selector，并对创建出来的JDK NIO 原生的Selector进行性能优化
+     */
     private SelectorTuple openSelector() {
         final Selector unwrappedSelector;
         try {
+            // 通过JDK NIO SelectorProvider创建Selector
+            // SelectorProvider会根据操作系统的不同选择JDK在不同操作系统版本下的对应Selector的实现。Linux下会选择Epoll，Mac下会选择Kqueue。
             unwrappedSelector = provider.openSelector();
         } catch (IOException e) {
             throw new ChannelException("failed to open a new selector", e);
         }
 
+        // 若Selector优化开关关闭，直接返回JDK NIO原生Selector，默认开启需要对Selector进行优化
         if (DISABLE_KEY_SET_OPTIMIZATION) {
             return new SelectorTuple(unwrappedSelector);
         }
 
+        // 判断由SelectorProvider创建出来的Selector是否是JDK NIO原生的Selector实现，若不是则直接返回
         Object maybeSelectorImplClass = AccessController.doPrivileged(new PrivilegedAction<Object>() {
             @Override
             public Object run() {
@@ -192,7 +210,6 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 }
             }
         });
-
         if (!(maybeSelectorImplClass instanceof Class) ||
             // ensure the current selector implementation is what we can instrument.
             !((Class<?>) maybeSelectorImplClass).isAssignableFrom(unwrappedSelector.getClass())) {
@@ -203,16 +220,16 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             return new SelectorTuple(unwrappedSelector);
         }
 
+        // 创建SelectedSelectionKeySet：其基于数组实现，可利用CPU缓存的优势来提高遍历的效率，通过反射替换掉sun.nio.ch.SelectorImpl类中selectedKeys和publicSelectedKeys的默认HashSet实现
         final Class<?> selectorImplClass = (Class<?>) maybeSelectorImplClass;
         final SelectedSelectionKeySet selectedKeySet = new SelectedSelectionKeySet();
-
         Object maybeException = AccessController.doPrivileged(new PrivilegedAction<Object>() {
             @Override
             public Object run() {
                 try {
                     Field selectedKeysField = selectorImplClass.getDeclaredField("selectedKeys");
                     Field publicSelectedKeysField = selectorImplClass.getDeclaredField("publicSelectedKeys");
-
+                    // Java9版本以上通过sun.misc.Unsafe设置字段值的方式
                     if (PlatformDependent.javaVersion() >= 9 && PlatformDependent.hasUnsafe()) {
                         // Let us try to use sun.misc.Unsafe to replace the SelectionKeySet.
                         // This allows us to also do this in Java9+ without any extra flags.
@@ -230,6 +247,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                         // We could not retrieve the offset, lets try reflection as last-resort.
                     }
 
+                    // 通过反射的方式用SelectedSelectionKeySet替换掉HashSet实现的electedKeys，sun.nio.ch.SelectorImpl#publicSelectedKeys。
                     Throwable cause = ReflectionUtil.trySetAccessible(selectedKeysField, true);
                     if (cause != null) {
                         return cause;
@@ -239,6 +257,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                         return cause;
                     }
 
+                    // Java8反射替换字段
                     selectedKeysField.set(unwrappedSelector, selectedKeySet);
                     publicSelectedKeysField.set(unwrappedSelector, selectedKeySet);
                     return null;
@@ -274,11 +293,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         return newTaskQueue0(maxPendingTasks);
     }
 
-    private static Queue<Runnable> newTaskQueue0(int maxPendingTasks) {
-        // This event loop never calls takeTask()
-        return maxPendingTasks == Integer.MAX_VALUE ? PlatformDependent.<Runnable>newMpscQueue()
-                : PlatformDependent.<Runnable>newMpscQueue(maxPendingTasks);
-    }
+
 
     /**
      * Registers an arbitrary {@link SelectableChannel}, not necessarily created by Netty, to the {@link Selector}

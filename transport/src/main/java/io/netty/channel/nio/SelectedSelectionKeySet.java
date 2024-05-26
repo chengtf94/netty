@@ -1,18 +1,3 @@
-/*
- * Copyright 2013 The Netty Project
- *
- * The Netty Project licenses this file to you under the Apache License,
- * version 2.0 (the "License"); you may not use this file except in compliance
- * with the License. You may obtain a copy of the License at:
- *
- *   https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
- * License for the specific language governing permissions and limitations
- * under the License.
- */
 package io.netty.channel.nio;
 
 import java.nio.channels.SelectionKey;
@@ -21,8 +6,14 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 
+/**
+ * SelectedSelectionKeySet：基于数组自定义集合，为了优化对sun.nio.ch.SelectorImpl#selectedKeys集合的插入、遍历性能
+ */
 final class SelectedSelectionKeySet extends AbstractSet<SelectionKey> {
 
+    /**
+     * SelectionKey数组、尾指针
+     */
     SelectionKey[] keys;
     int size;
 
@@ -35,13 +26,20 @@ final class SelectedSelectionKeySet extends AbstractSet<SelectionKey> {
         if (o == null) {
             return false;
         }
-
         keys[size++] = o;
         if (size == keys.length) {
             increaseCapacity();
         }
-
         return true;
+    }
+
+    /**
+     * 扩容
+     */
+    private void increaseCapacity() {
+        SelectionKey[] newKeys = new SelectionKey[keys.length << 1];
+        System.arraycopy(keys, 0, newKeys, 0, size);
+        keys = newKeys;
     }
 
     @Override
@@ -93,9 +91,4 @@ final class SelectedSelectionKeySet extends AbstractSet<SelectionKey> {
         size = 0;
     }
 
-    private void increaseCapacity() {
-        SelectionKey[] newKeys = new SelectionKey[keys.length << 1];
-        System.arraycopy(keys, 0, newKeys, 0, size);
-        keys = newKeys;
-    }
 }

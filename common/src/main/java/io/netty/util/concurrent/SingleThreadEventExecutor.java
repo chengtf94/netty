@@ -1,18 +1,3 @@
-/*
- * Copyright 2012 The Netty Project
- *
- * The Netty Project licenses this file to you under the Apache License,
- * version 2.0 (the "License"); you may not use this file except in compliance
- * with the License. You may obtain a copy of the License at:
- *
- *   https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
- * License for the specific language governing permissions and limitations
- * under the License.
- */
 package io.netty.util.concurrent;
 
 import io.netty.util.internal.ObjectUtil;
@@ -74,6 +59,9 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
             AtomicReferenceFieldUpdater.newUpdater(
                     SingleThreadEventExecutor.class, ThreadProperties.class, "threadProperties");
 
+    /**
+     * 普通任务队列：是Netty最主要执行的异步任务
+     */
     private final Queue<Runnable> taskQueue;
 
     private volatile Thread thread;
@@ -161,6 +149,14 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         rejectedExecutionHandler = ObjectUtil.checkNotNull(rejectedHandler, "rejectedHandler");
     }
 
+    /**
+     * 构造方法
+     * @param parent Reactor所属的NioEventLoopGroup Reactor线程组
+     * @param executor 用于启动Reactor线程的executor -> ThreadPerTaskExecutor
+     * @param addTaskWakesUp 向Reactor添加任务时，是否唤醒Selector停止轮询IO就绪事件，马上执行异步任务
+     * @param taskQueue 普通任务队列
+     * @param rejectedHandler 任务队列满时的拒绝策略
+     */
     protected SingleThreadEventExecutor(EventExecutorGroup parent, Executor executor,
                                         boolean addTaskWakesUp, Queue<Runnable> taskQueue,
                                         RejectedExecutionHandler rejectedHandler) {
