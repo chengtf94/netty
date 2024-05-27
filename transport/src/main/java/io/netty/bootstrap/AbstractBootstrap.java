@@ -64,13 +64,16 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
      */
     @SuppressWarnings("deprecation")
     private volatile ChannelFactory<? extends C> channelFactory;
-    private volatile SocketAddress localAddress;
-
-    // The order in which ChannelOptions are applied is important they may depend on each other for validation
-    // purposes.
+    /**
+     * ServerSocketChannel中的ChannelOption配置
+     */
     private final Map<ChannelOption<?>, Object> options = new LinkedHashMap<ChannelOption<?>, Object>();
-    private final Map<AttributeKey<?>, Object> attrs = new ConcurrentHashMap<AttributeKey<?>, Object>();
+    /**
+     * ServerSocketChannel中pipeline里的handler(主要是acceptor)
+     */
     private volatile ChannelHandler handler;
+    private volatile SocketAddress localAddress;
+    private final Map<AttributeKey<?>, Object> attrs = new ConcurrentHashMap<AttributeKey<?>, Object>();
 
     /**
      * 构造方法
@@ -101,12 +104,16 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     /**
-     * 配置服务端ServerSocketChannel
+     * 配置ServerSocketChannel：只是配置阶段，NioServerSocketChannel此时并未被创建。它是在启动的时候才会被创建出来。
      */
     public B channel(Class<? extends C> channelClass) {
         return channelFactory(new ReflectiveChannelFactory<C>(
                 ObjectUtil.checkNotNull(channelClass, "channelClass")
         ));
+    }
+    @SuppressWarnings({ "unchecked", "deprecation" })
+    public B channelFactory(io.netty.channel.ChannelFactory<? extends C> channelFactory) {
+        return channelFactory((ChannelFactory<C>) channelFactory);
     }
     @Deprecated
     public B channelFactory(ChannelFactory<? extends C> channelFactory) {
@@ -119,28 +126,40 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         return self();
     }
 
+    /**
+     * 设置主Reactor中ServerSocketChannel的option选项
+     */
+    public <T> B option(ChannelOption<T> option, T value) {
+        ObjectUtil.checkNotNull(option, "option");
+        synchronized (options) {
+            if (value == null) {
+                options.remove(option);
+            } else {
+                options.put(option, value);
+            }
+        }
+        return self();
+    }
 
-
-
-    @SuppressWarnings("unchecked")
-    private B self() {
-        return (B) this;
+    /**
+     * 设置ServerSocketChannel中Pipeline里的ChannelHandler
+     */
+    public B handler(ChannelHandler handler) {
+        this.handler = ObjectUtil.checkNotNull(handler, "handler");
+        return self();
     }
 
 
 
 
 
-    /**
-     * {@link io.netty.channel.ChannelFactory} which is used to create {@link Channel} instances from
-     * when calling {@link #bind()}. This method is usually only used if {@link #channel(Class)}
-     * is not working for you because of some more complex needs. If your {@link Channel} implementation
-     * has a no-args constructor, its highly recommend to just use {@link #channel(Class)} to
-     * simplify your code.
-     */
-    @SuppressWarnings({ "unchecked", "deprecation" })
-    public B channelFactory(io.netty.channel.ChannelFactory<? extends C> channelFactory) {
-        return channelFactory((ChannelFactory<C>) channelFactory);
+
+
+
+
+    @SuppressWarnings("unchecked")
+    private B self() {
+        return (B) this;
     }
 
     /**
@@ -172,21 +191,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         return localAddress(new InetSocketAddress(inetHost, inetPort));
     }
 
-    /**
-     * Allow to specify a {@link ChannelOption} which is used for the {@link Channel} instances once they got
-     * created. Use a value of {@code null} to remove a previous set {@link ChannelOption}.
-     */
-    public <T> B option(ChannelOption<T> option, T value) {
-        ObjectUtil.checkNotNull(option, "option");
-        synchronized (options) {
-            if (value == null) {
-                options.remove(option);
-            } else {
-                options.put(option, value);
-            }
-        }
-        return self();
-    }
+
 
     /**
      * Allow to specify an initial attribute of the newly created {@link Channel}.  If the {@code value} is
@@ -367,13 +372,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         });
     }
 
-    /**
-     * the {@link ChannelHandler} to use for serving the requests.
-     */
-    public B handler(ChannelHandler handler) {
-        this.handler = ObjectUtil.checkNotNull(handler, "handler");
-        return self();
-    }
+
 
     /**
      * Returns the configured {@link EventLoopGroup} or {@code null} if non is configured yet.

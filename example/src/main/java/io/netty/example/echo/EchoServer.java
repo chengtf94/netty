@@ -41,7 +41,7 @@ public final class EchoServer {
             ServerBootstrap b = new ServerBootstrap();
             b.group(bossGroup, workerGroup)                             // 设置主从Reactor
              .channel(NioServerSocketChannel.class)                     // 设置主Reactor中的channel类型
-             .option(ChannelOption.SO_BACKLOG, 100)                     // 设置主Reactor中channel的option选项
+             .option(ChannelOption.SO_BACKLOG, 100)               // 设置主Reactor中channel的option选项
              .handler(new LoggingHandler(LogLevel.INFO))                // 设置主Reactor中Channel->pipeline->handler
              .childHandler(new ChannelInitializer<SocketChannel>() {    // 设置从Reactor中注册channel的pipeline
                  @Override

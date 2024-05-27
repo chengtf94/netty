@@ -24,7 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 /**
- * ServerBootstrap：包含了Netty服务端程序启动的所有配置信息，负责对主从Reactor线程组相关的配置进行管理，
+ * ServerBootstrap：启动引导辅助类，包含了Netty服务端程序启动的所有配置信息，负责对主从Reactor线程组相关的配置进行管理，
  * 其中带child前缀的配置方法是对从Reactor线程组的相关配置管理，从Reactor线程组中的Sub Reactor负责管理的客户端NioSocketChannel相关配置存储在ServerBootstrap结构中。
  * AbstractBootstrap：负责对主Reactor线程组相关的配置进行管理，以及主Reactor线程组中的Main Reactor负责处理的服务端ServerSocketChannel相关的配置管理。
  *
@@ -32,16 +32,22 @@ import java.util.concurrent.TimeUnit;
 public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerChannel> {
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(ServerBootstrap.class);
 
-    // The order in which child ChannelOptions are applied is important they may depend on each other for validation
-    // purposes.
-    private final Map<ChannelOption<?>, Object> childOptions = new LinkedHashMap<ChannelOption<?>, Object>();
-    private final Map<AttributeKey<?>, Object> childAttrs = new ConcurrentHashMap<AttributeKey<?>, Object>();
-    private final ServerBootstrapConfig config = new ServerBootstrapConfig(this);
     /**
      * 从Reactor线程组
      */
     private volatile EventLoopGroup childGroup;
+    /**
+     * SocketChannel中的ChannelOption配置
+     */
+    private final Map<ChannelOption<?>, Object> childOptions = new LinkedHashMap<ChannelOption<?>, Object>();
+    /**
+     * SocketChannel中pipeline里的handler
+     * 注意：Pipeline中的ChannelHandler不易添加过多，并且不能在ChannelHandler中执行耗时的业务处理任务。
+     */
     private volatile ChannelHandler childHandler;
+    private final Map<AttributeKey<?>, Object> childAttrs = new ConcurrentHashMap<AttributeKey<?>, Object>();
+    private final ServerBootstrapConfig config = new ServerBootstrapConfig(this);
+
 
     /**
      * 构造方法
@@ -75,9 +81,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
     }
 
     /**
-     * Allow to specify a {@link ChannelOption} which is used for the {@link Channel} instances once they get created
-     * (after the acceptor accepted the {@link Channel}). Use a value of {@code null} to remove a previous set
-     * {@link ChannelOption}.
+     * 设置从Reactor中SocketChannel的option选项
      */
     public <T> ServerBootstrap childOption(ChannelOption<T> childOption, T value) {
         ObjectUtil.checkNotNull(childOption, "childOption");
@@ -90,6 +94,23 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         }
         return this;
     }
+
+    /**
+     * 设置SocketChannel中Pipeline里的ChannelHandler
+     */
+    public ServerBootstrap childHandler(ChannelHandler childHandler) {
+        this.childHandler = ObjectUtil.checkNotNull(childHandler, "childHandler");
+        return this;
+    }
+
+
+
+
+
+
+
+
+
 
     /**
      * Set the specific {@link AttributeKey} with the given value on every child {@link Channel}. If the value is
@@ -105,13 +126,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         return this;
     }
 
-    /**
-     * Set the {@link ChannelHandler} which is used to serve the request for the {@link Channel}'s.
-     */
-    public ServerBootstrap childHandler(ChannelHandler childHandler) {
-        this.childHandler = ObjectUtil.checkNotNull(childHandler, "childHandler");
-        return this;
-    }
+
 
     @Override
     void init(Channel channel) {
