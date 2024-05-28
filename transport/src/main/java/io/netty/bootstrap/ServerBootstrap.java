@@ -27,7 +27,6 @@ import java.util.concurrent.TimeUnit;
  * ServerBootstrap：启动引导辅助类，包含了Netty服务端程序启动的所有配置信息，负责对主从Reactor线程组相关的配置进行管理，
  * 其中带child前缀的配置方法是对从Reactor线程组的相关配置管理，从Reactor线程组中的Sub Reactor负责管理的客户端NioSocketChannel相关配置存储在ServerBootstrap结构中。
  * AbstractBootstrap：负责对主Reactor线程组相关的配置进行管理，以及主Reactor线程组中的Main Reactor负责处理的服务端ServerSocketChannel相关的配置管理。
- *
  */
 public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerChannel> {
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(ServerBootstrap.class);
@@ -52,7 +51,9 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
     /**
      * 构造方法
      */
-    public ServerBootstrap() { }
+    public ServerBootstrap() {
+    }
+
     private ServerBootstrap(ServerBootstrap bootstrap) {
         super(bootstrap);
         childGroup = bootstrap.childGroup;
@@ -70,6 +71,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
     public ServerBootstrap group(EventLoopGroup group) {
         return group(group, group);
     }
+
     public ServerBootstrap group(EventLoopGroup parentGroup, EventLoopGroup childGroup) {
         // 父类管理主Reactor线程组
         super.group(parentGroup);
@@ -103,30 +105,18 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         return this;
     }
 
-
-
-
-
-
-
-
-
-
-    /**
-     * Set the specific {@link AttributeKey} with the given value on every child {@link Channel}. If the value is
-     * {@code null} the {@link AttributeKey} is removed
-     */
-    public <T> ServerBootstrap childAttr(AttributeKey<T> childKey, T value) {
-        ObjectUtil.checkNotNull(childKey, "childKey");
-        if (value == null) {
-            childAttrs.remove(childKey);
-        } else {
-            childAttrs.put(childKey, value);
+    @Override
+    public ServerBootstrap validate() {
+        super.validate();
+        if (childHandler == null) {
+            throw new IllegalStateException("childHandler not set");
+        }
+        if (childGroup == null) {
+            logger.warn("childGroup is not set. Using parentGroup instead.");
+            childGroup = config.group();
         }
         return this;
     }
-
-
 
     @Override
     void init(Channel channel) {
@@ -163,18 +153,21 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         });
     }
 
-    @Override
-    public ServerBootstrap validate() {
-        super.validate();
-        if (childHandler == null) {
-            throw new IllegalStateException("childHandler not set");
-        }
-        if (childGroup == null) {
-            logger.warn("childGroup is not set. Using parentGroup instead.");
-            childGroup = config.group();
+
+    /**
+     * Set the specific {@link AttributeKey} with the given value on every child {@link Channel}. If the value is
+     * {@code null} the {@link AttributeKey} is removed
+     */
+    public <T> ServerBootstrap childAttr(AttributeKey<T> childKey, T value) {
+        ObjectUtil.checkNotNull(childKey, "childKey");
+        if (value == null) {
+            childAttrs.remove(childKey);
+        } else {
+            childAttrs.put(childKey, value);
         }
         return this;
     }
+
 
     private static class ServerBootstrapAcceptor extends ChannelInboundHandlerAdapter {
 

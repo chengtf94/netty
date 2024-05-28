@@ -80,6 +80,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
      */
     AbstractBootstrap() {
     }
+
     AbstractBootstrap(AbstractBootstrap<B, C> bootstrap) {
         group = bootstrap.group;
         channelFactory = bootstrap.channelFactory;
@@ -111,10 +112,12 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
                 ObjectUtil.checkNotNull(channelClass, "channelClass")
         ));
     }
-    @SuppressWarnings({ "unchecked", "deprecation" })
+
+    @SuppressWarnings({"unchecked", "deprecation"})
     public B channelFactory(io.netty.channel.ChannelFactory<? extends C> channelFactory) {
         return channelFactory((ChannelFactory<C>) channelFactory);
     }
+
     @Deprecated
     public B channelFactory(ChannelFactory<? extends C> channelFactory) {
         ObjectUtil.checkNotNull(channelFactory, "channelFactory");
@@ -149,67 +152,40 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         return self();
     }
 
-
-
-
-
-
-
-
-
-    @SuppressWarnings("unchecked")
-    private B self() {
-        return (B) this;
+    /**
+     * Create a new {@link Channel} and bind it.
+     * Netty服务端的启动流程入口
+     */
+    public ChannelFuture bind(int inetPort) {
+        return bind(new InetSocketAddress(inetPort));
     }
 
-    /**
-     * The {@link SocketAddress} which is used to bind the local "end" to.
-     */
-    public B localAddress(SocketAddress localAddress) {
-        this.localAddress = localAddress;
-        return self();
+    public ChannelFuture bind(String inetHost, int inetPort) {
+        return bind(SocketUtils.socketAddress(inetHost, inetPort));
     }
 
-    /**
-     * @see #localAddress(SocketAddress)
-     */
-    public B localAddress(int inetPort) {
-        return localAddress(new InetSocketAddress(inetPort));
+    public ChannelFuture bind(InetAddress inetHost, int inetPort) {
+        return bind(new InetSocketAddress(inetHost, inetPort));
     }
 
-    /**
-     * @see #localAddress(SocketAddress)
-     */
-    public B localAddress(String inetHost, int inetPort) {
-        return localAddress(SocketUtils.socketAddress(inetHost, inetPort));
-    }
-
-    /**
-     * @see #localAddress(SocketAddress)
-     */
-    public B localAddress(InetAddress inetHost, int inetPort) {
-        return localAddress(new InetSocketAddress(inetHost, inetPort));
-    }
-
-
-
-    /**
-     * Allow to specify an initial attribute of the newly created {@link Channel}.  If the {@code value} is
-     * {@code null}, the attribute of the specified {@code key} is removed.
-     */
-    public <T> B attr(AttributeKey<T> key, T value) {
-        ObjectUtil.checkNotNull(key, "key");
-        if (value == null) {
-            attrs.remove(key);
-        } else {
-            attrs.put(key, value);
+    public ChannelFuture bind() {
+        validate();
+        SocketAddress localAddress = this.localAddress;
+        if (localAddress == null) {
+            throw new IllegalStateException("localAddress not set");
         }
-        return self();
+        return doBind(localAddress);
+    }
+
+    public ChannelFuture bind(SocketAddress localAddress) {
+        // 校验Netty核心组件是否配置齐全
+        validate();
+        // 服务端开始启动，绑定端口地址，接收客户端连接
+        return doBind(ObjectUtil.checkNotNull(localAddress, "localAddress"));
     }
 
     /**
-     * Validate all the parameters. Sub-classes may override this, but should
-     * call the super method in that case.
+     * 校验Netty核心组件是否配置齐全
      */
     public B validate() {
         if (group == null) {
@@ -221,71 +197,21 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         return self();
     }
 
-    /**
-     * Returns a deep clone of this bootstrap which has the identical configuration.  This method is useful when making
-     * multiple {@link Channel}s with similar settings.  Please note that this method does not clone the
-     * {@link EventLoopGroup} deeply but shallowly, making the group a shared resource.
-     */
-    @Override
-    @SuppressWarnings("CloneDoesntDeclareCloneNotSupportedException")
-    public abstract B clone();
-
-    /**
-     * Create a new {@link Channel} and register it with an {@link EventLoop}.
-     */
-    public ChannelFuture register() {
-        validate();
-        return initAndRegister();
+    @SuppressWarnings("unchecked")
+    private B self() {
+        return (B) this;
     }
 
     /**
-     * Create a new {@link Channel} and bind it.
+     * 服务端开始启动，绑定端口地址，接收客户端连接
      */
-    public ChannelFuture bind() {
-        validate();
-        SocketAddress localAddress = this.localAddress;
-        if (localAddress == null) {
-            throw new IllegalStateException("localAddress not set");
-        }
-        return doBind(localAddress);
-    }
-
-    /**
-     * Create a new {@link Channel} and bind it.
-     */
-    public ChannelFuture bind(int inetPort) {
-        return bind(new InetSocketAddress(inetPort));
-    }
-
-    /**
-     * Create a new {@link Channel} and bind it.
-     */
-    public ChannelFuture bind(String inetHost, int inetPort) {
-        return bind(SocketUtils.socketAddress(inetHost, inetPort));
-    }
-
-    /**
-     * Create a new {@link Channel} and bind it.
-     */
-    public ChannelFuture bind(InetAddress inetHost, int inetPort) {
-        return bind(new InetSocketAddress(inetHost, inetPort));
-    }
-
-    /**
-     * Create a new {@link Channel} and bind it.
-     */
-    public ChannelFuture bind(SocketAddress localAddress) {
-        validate();
-        return doBind(ObjectUtil.checkNotNull(localAddress, "localAddress"));
-    }
-
     private ChannelFuture doBind(final SocketAddress localAddress) {
+        // 异步创建、初始化、注册ServerSocketChannel到主Reactor上
         final ChannelFuture regFuture = initAndRegister();
         final Channel channel = regFuture.channel();
         if (regFuture.cause() != null) {
             return regFuture;
         }
-
         if (regFuture.isDone()) {
             // At this point we know that the registration was complete and successful.
             ChannelPromise promise = channel.newPromise();
@@ -293,6 +219,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             return promise;
         } else {
             // Registration future is almost always fulfilled already, but just in case it's not.
+            // 如果此时注册操作没有完成，则向regFuture添加operationComplete回调函数，注册成功后回调。
             final PendingRegistrationPromise promise = new PendingRegistrationPromise(channel);
             regFuture.addListener(new ChannelFutureListener() {
                 @Override
@@ -306,7 +233,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
                         // Registration was successful, so set the correct executor to use.
                         // See https://github.com/netty/netty/issues/2586
                         promise.registered();
-
+                        // ServerSocketChannel向主Reactor注册成功后开始绑定端口
                         doBind0(regFuture, channel, localAddress, promise);
                     }
                 }
@@ -315,10 +242,15 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         }
     }
 
+    /**
+     * 创建NioServerSocketChannel，并对NioServerSocketChannel进行初始化，最后将NioServerSocketChannel注册到主Reactor中
+     */
     final ChannelFuture initAndRegister() {
         Channel channel = null;
         try {
+            // 创建NioServerSocketChannel：ReflectiveChannelFactory通过泛型，反射，工厂的方式灵活创建不同类型的Channel
             channel = channelFactory.newChannel();
+            // 初始化NioServerSocketChannel
             init(channel);
         } catch (Throwable t) {
             if (channel != null) {
@@ -352,7 +284,88 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         return regFuture;
     }
 
+    /**
+     * 初始化NioServerSocketChannel
+     */
     abstract void init(Channel channel) throws Exception;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    /**
+     * The {@link SocketAddress} which is used to bind the local "end" to.
+     */
+    public B localAddress(SocketAddress localAddress) {
+        this.localAddress = localAddress;
+        return self();
+    }
+
+    /**
+     * @see #localAddress(SocketAddress)
+     */
+    public B localAddress(int inetPort) {
+        return localAddress(new InetSocketAddress(inetPort));
+    }
+
+    /**
+     * @see #localAddress(SocketAddress)
+     */
+    public B localAddress(String inetHost, int inetPort) {
+        return localAddress(SocketUtils.socketAddress(inetHost, inetPort));
+    }
+
+    /**
+     * @see #localAddress(SocketAddress)
+     */
+    public B localAddress(InetAddress inetHost, int inetPort) {
+        return localAddress(new InetSocketAddress(inetHost, inetPort));
+    }
+
+
+    /**
+     * Allow to specify an initial attribute of the newly created {@link Channel}.  If the {@code value} is
+     * {@code null}, the attribute of the specified {@code key} is removed.
+     */
+    public <T> B attr(AttributeKey<T> key, T value) {
+        ObjectUtil.checkNotNull(key, "key");
+        if (value == null) {
+            attrs.remove(key);
+        } else {
+            attrs.put(key, value);
+        }
+        return self();
+    }
+
+
+    /**
+     * Returns a deep clone of this bootstrap which has the identical configuration.  This method is useful when making
+     * multiple {@link Channel}s with similar settings.  Please note that this method does not clone the
+     * {@link EventLoopGroup} deeply but shallowly, making the group a shared resource.
+     */
+    @Override
+    @SuppressWarnings("CloneDoesntDeclareCloneNotSupportedException")
+    public abstract B clone();
+
+    /**
+     * Create a new {@link Channel} and register it with an {@link EventLoop}.
+     */
+    public ChannelFuture register() {
+        validate();
+        return initAndRegister();
+    }
+
 
     private static void doBind0(
             final ChannelFuture regFuture, final Channel channel,
@@ -371,7 +384,6 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             }
         });
     }
-
 
 
     /**
@@ -435,7 +447,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     static void setAttributes(Channel channel, Map.Entry<AttributeKey<?>, Object>[] attrs) {
-        for (Map.Entry<AttributeKey<?>, Object> e: attrs) {
+        for (Map.Entry<AttributeKey<?>, Object> e : attrs) {
             @SuppressWarnings("unchecked")
             AttributeKey<Object> key = (AttributeKey<Object>) e.getKey();
             channel.attr(key).set(e.getValue());
@@ -444,7 +456,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
 
     static void setChannelOptions(
             Channel channel, Map.Entry<ChannelOption<?>, Object>[] options, InternalLogger logger) {
-        for (Map.Entry<ChannelOption<?>, Object> e: options) {
+        for (Map.Entry<ChannelOption<?>, Object> e : options) {
             setChannelOption(channel, e.getKey(), e.getValue(), logger);
         }
     }
@@ -465,8 +477,8 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     @Override
     public String toString() {
         StringBuilder buf = new StringBuilder()
-            .append(StringUtil.simpleClassName(this))
-            .append('(').append(config()).append(')');
+                .append(StringUtil.simpleClassName(this))
+                .append('(').append(config()).append(')');
         return buf.toString();
     }
 

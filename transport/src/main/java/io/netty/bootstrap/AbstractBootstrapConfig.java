@@ -37,45 +37,22 @@ public abstract class AbstractBootstrapConfig<B extends AbstractBootstrap<B, C>,
         this.bootstrap = ObjectUtil.checkNotNull(bootstrap, "bootstrap");
     }
 
-    /**
-     * Returns the configured local address or {@code null} if non is configured yet.
-     */
     public final SocketAddress localAddress() {
         return bootstrap.localAddress();
     }
-
-    /**
-     * Returns the configured {@link ChannelFactory} or {@code null} if non is configured yet.
-     */
     @SuppressWarnings("deprecation")
     public final ChannelFactory<? extends C> channelFactory() {
         return bootstrap.channelFactory();
     }
-
-    /**
-     * Returns the configured {@link ChannelHandler} or {@code null} if non is configured yet.
-     */
     public final ChannelHandler handler() {
         return bootstrap.handler();
     }
-
-    /**
-     * Returns a copy of the configured options.
-     */
     public final Map<ChannelOption<?>, Object> options() {
         return bootstrap.options();
     }
-
-    /**
-     * Returns a copy of the configured attributes.
-     */
     public final Map<AttributeKey<?>, Object> attrs() {
         return bootstrap.attrs();
     }
-
-    /**
-     * Returns the configured {@link EventLoopGroup} or {@code null} if non is configured yet.
-     */
     @SuppressWarnings("deprecation")
     public final EventLoopGroup group() {
         return bootstrap.group();
@@ -132,4 +109,5 @@ public abstract class AbstractBootstrapConfig<B extends AbstractBootstrap<B, C>,
         }
         return buf.toString();
     }
+
 }

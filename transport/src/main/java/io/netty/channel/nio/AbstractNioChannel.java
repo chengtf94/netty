@@ -46,11 +46,15 @@ import java.util.concurrent.TimeUnit;
  * Abstract base class for {@link Channel} implementations which use a Selector based approach.
  */
 public abstract class AbstractNioChannel extends AbstractChannel {
+    private static final InternalLogger logger = InternalLoggerFactory.getInstance(AbstractNioChannel.class);
 
-    private static final InternalLogger logger =
-            InternalLoggerFactory.getInstance(AbstractNioChannel.class);
-
+    /**
+     * JDK NIO原生ServerSocketChannel
+     */
     private final SelectableChannel ch;
+    /**
+     *  Channel监听事件集合，例如ServerSocketChannel是SelectionKey.OP_ACCEPT连接事件
+     */
     protected final int readInterestOp;
     volatile SelectionKey selectionKey;
     boolean readPending;
@@ -70,29 +74,30 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     private SocketAddress requestedRemoteAddress;
 
     /**
-     * Create a new instance
-     *
-     * @param parent            the parent {@link Channel} by which this instance was created. May be {@code null}
-     * @param ch                the underlying {@link SelectableChannel} on which it operates
-     * @param readInterestOp    the ops to set to receive data from the {@link SelectableChannel}
+     * 构造方法
      */
     protected AbstractNioChannel(Channel parent, SelectableChannel ch, int readInterestOp) {
         super(parent);
         this.ch = ch;
         this.readInterestOp = readInterestOp;
         try {
+            // 设置为非阻塞模式
             ch.configureBlocking(false);
         } catch (IOException e) {
             try {
                 ch.close();
             } catch (IOException e2) {
-                logger.warn(
-                            "Failed to close a partially initialized socket.", e2);
+                logger.warn("Failed to close a partially initialized socket.", e2);
             }
-
             throw new ChannelException("Failed to enter non-blocking mode.", e);
         }
     }
+
+
+
+
+
+
 
     @Override
     public boolean isOpen() {

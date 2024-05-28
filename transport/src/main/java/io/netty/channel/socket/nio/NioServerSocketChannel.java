@@ -29,20 +29,20 @@ import java.util.Map;
  */
 public class NioServerSocketChannel extends AbstractNioMessageChannel
                              implements io.netty.channel.socket.ServerSocketChannel {
-
-    private static final ChannelMetadata METADATA = new ChannelMetadata(false, 16);
-    private static final SelectorProvider DEFAULT_SELECTOR_PROVIDER = SelectorProvider.provider();
-
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(NioServerSocketChannel.class);
 
+    /**
+     * 用于创建Selector和Selectable Channels
+     */
+    private static final SelectorProvider DEFAULT_SELECTOR_PROVIDER = SelectorProvider.provider();
+    private static final ChannelMetadata METADATA = new ChannelMetadata(false, 16);
+
+
+    /**
+     * 创建JDK NIO ServerSocketChannel
+     */
     private static ServerSocketChannel newSocket(SelectorProvider provider) {
         try {
-            /**
-             *  Use the {@link SelectorProvider} to open {@link SocketChannel} and so remove condition in
-             *  {@link SelectorProvider#provider()} which is called by each ServerSocketChannel.open() otherwise.
-             *
-             *  See <a href="https://github.com/netty/netty/issues/2308">#2308</a>.
-             */
             return provider.openServerSocketChannel();
         } catch (IOException e) {
             throw new ChannelException(
@@ -50,29 +50,37 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
         }
     }
 
+    /**
+     * ServerSocketChannel相关的配置
+     */
     private final ServerSocketChannelConfig config;
 
     /**
-     * Create a new instance
+     * 构造方法
      */
     public NioServerSocketChannel() {
         this(newSocket(DEFAULT_SELECTOR_PROVIDER));
     }
-
-    /**
-     * Create a new instance using the given {@link SelectorProvider}.
-     */
     public NioServerSocketChannel(SelectorProvider provider) {
         this(newSocket(provider));
     }
-
-    /**
-     * Create a new instance using the given {@link ServerSocketChannel}.
-     */
     public NioServerSocketChannel(ServerSocketChannel channel) {
+        // 父类AbstractNioChannel中保存JDK NIO原生ServerSocketChannel以及要监听的事件OP_ACCEPT
         super(null, channel, SelectionKey.OP_ACCEPT);
+        // 创建ServerSocketChannel配置类
+        // DefaultChannelConfig中设置用于Channel接收数据用的Buffer->AdaptiveRecvByteBufAllocator
         config = new NioServerSocketChannelConfig(this, javaChannel().socket());
     }
+    @Override
+    protected ServerSocketChannel javaChannel() {
+        return (ServerSocketChannel) super.javaChannel();
+    }
+
+
+
+
+
+
 
     @Override
     public InetSocketAddress localAddress() {
@@ -101,10 +109,7 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
         return null;
     }
 
-    @Override
-    protected ServerSocketChannel javaChannel() {
-        return (ServerSocketChannel) super.javaChannel();
-    }
+
 
     @Override
     protected SocketAddress localAddress0() {
@@ -180,6 +185,9 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
         throw new UnsupportedOperationException();
     }
 
+    /**
+     * ServerSocketChannel配置类
+     */
     private final class NioServerSocketChannelConfig extends DefaultServerSocketChannelConfig {
         private NioServerSocketChannelConfig(NioServerSocketChannel channel, ServerSocket javaSocket) {
             super(channel, javaSocket);
@@ -224,4 +232,5 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
     protected boolean closeOnReadError(Throwable cause) {
         return super.closeOnReadError(cause);
     }
+
 }
