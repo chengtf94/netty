@@ -56,6 +56,9 @@ public abstract class AbstractNioChannel extends AbstractChannel {
      *  Channel监听事件集合，例如ServerSocketChannel是SelectionKey.OP_ACCEPT连接事件
      */
     protected final int readInterestOp;
+    /**
+     * Channel注册到Selector后获得的SelectKey
+     */
     volatile SelectionKey selectionKey;
     boolean readPending;
     private final Runnable clearReadPendingRunnable = new Runnable() {
@@ -81,7 +84,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         this.ch = ch;
         this.readInterestOp = readInterestOp;
         try {
-            // 设置为非阻塞模式
+            // 设置为非阻塞模式，配合IO多路复用模型
             ch.configureBlocking(false);
         } catch (IOException e) {
             try {
@@ -90,6 +93,33 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                 logger.warn("Failed to close a partially initialized socket.", e2);
             }
             throw new ChannelException("Failed to enter non-blocking mode.", e);
+        }
+    }
+
+    @Override
+    protected void doRegister() throws Exception {
+        boolean selected = false;
+        for (;;) {
+            try {
+                // Selector：表示JDK NIO Channel将要向哪个Selector进行注册。
+                // int ops： 表示Channel上感兴趣的IO事件，当对应的IO事件就绪时，Selector会返回Channel对应的SelectionKey。
+                // attachment：向SelectionKey中添加用户自定义的附加对象。
+                // 通过SelectableChannel#register方法将Netty自定义的NioServerSocketChannel（这里的this指针）附着在SelectionKey的attechment属性上，
+                // 完成Netty自定义Channel与JDK NIO Channel的关系绑定
+                selectionKey = javaChannel().register(eventLoop().unwrappedSelector(), 0, this);
+                return;
+            } catch (CancelledKeyException e) {
+                if (!selected) {
+                    // Force the Selector to select now as the "canceled" SelectionKey may still be
+                    // cached and not removed because no Select.select(..) operation was called yet.
+                    eventLoop().selectNow();
+                    selected = true;
+                } else {
+                    // We forced a select operation on the selector before but the SelectionKey is still cached
+                    // for whatever reason. JDK bug ?
+                    throw e;
+                }
+            }
         }
     }
 
@@ -377,27 +407,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         return loop instanceof NioEventLoop;
     }
 
-    @Override
-    protected void doRegister() throws Exception {
-        boolean selected = false;
-        for (;;) {
-            try {
-                selectionKey = javaChannel().register(eventLoop().unwrappedSelector(), 0, this);
-                return;
-            } catch (CancelledKeyException e) {
-                if (!selected) {
-                    // Force the Selector to select now as the "canceled" SelectionKey may still be
-                    // cached and not removed because no Select.select(..) operation was called yet.
-                    eventLoop().selectNow();
-                    selected = true;
-                } else {
-                    // We forced a select operation on the selector before but the SelectionKey is still cached
-                    // for whatever reason. JDK bug ?
-                    throw e;
-                }
-            }
-        }
-    }
+
 
     @Override
     protected void doDeregister() throws Exception {

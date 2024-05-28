@@ -37,7 +37,6 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
     private static final SelectorProvider DEFAULT_SELECTOR_PROVIDER = SelectorProvider.provider();
     private static final ChannelMetadata METADATA = new ChannelMetadata(false, 16);
 
-
     /**
      * 创建JDK NIO ServerSocketChannel
      */

@@ -71,6 +71,7 @@ public final class DefaultEventExecutorChooserFactory implements EventExecutorCh
 
         @Override
         public EventExecutor next() {
+            // 采用轮询round-robin的方式选择Reactor
             return executors[(int) Math.abs(idx.getAndIncrement() % executors.length)];
         }
     }

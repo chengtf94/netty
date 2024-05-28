@@ -213,7 +213,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             return regFuture;
         }
         if (regFuture.isDone()) {
-            // At this point we know that the registration was complete and successful.
+            // 如果注册完成，则进行绑定操作
             ChannelPromise promise = channel.newPromise();
             doBind0(regFuture, channel, localAddress, promise);
             return promise;
@@ -233,7 +233,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
                         // Registration was successful, so set the correct executor to use.
                         // See https://github.com/netty/netty/issues/2586
                         promise.registered();
-                        // ServerSocketChannel向主Reactor注册成功后开始绑定端口
+                        // ServerSocketChannel向主Reactor注册成功后开始绑定端口，注册完成后，Reactor线程回调这里
                         doBind0(regFuture, channel, localAddress, promise);
                     }
                 }
@@ -262,7 +262,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             // as the Channel is not registered yet we need to force the usage of the GlobalEventExecutor
             return new DefaultChannelPromise(new FailedChannel(), GlobalEventExecutor.INSTANCE).setFailure(t);
         }
-
+        // 从ServerBootstrap获取主Reactor线程组NioEventLoopGroup，将NioServerSocketChannel注册到NioEventLoopGroup中
         ChannelFuture regFuture = config().group().register(channel);
         if (regFuture.cause() != null) {
             if (channel.isRegistered()) {
@@ -289,9 +289,33 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
      */
     abstract void init(Channel channel) throws Exception;
 
+    static void setChannelOptions(
+            Channel channel, Map.Entry<ChannelOption<?>, Object>[] options, InternalLogger logger) {
+        for (Map.Entry<ChannelOption<?>, Object> e : options) {
+            setChannelOption(channel, e.getKey(), e.getValue(), logger);
+        }
+    }
 
+    @SuppressWarnings("unchecked")
+    private static void setChannelOption(
+            Channel channel, ChannelOption<?> option, Object value, InternalLogger logger) {
+        try {
+            if (!channel.config().setOption((ChannelOption<Object>) option, value)) {
+                logger.warn("Unknown channel option '{}' for channel '{}'", option, channel);
+            }
+        } catch (Throwable t) {
+            logger.warn(
+                    "Failed to set channel option '{}' with value '{}' for channel '{}'", option, value, channel, t);
+        }
+    }
 
-
+    static void setAttributes(Channel channel, Map.Entry<AttributeKey<?>, Object>[] attrs) {
+        for (Map.Entry<AttributeKey<?>, Object> e : attrs) {
+            @SuppressWarnings("unchecked")
+            AttributeKey<Object> key = (AttributeKey<Object>) e.getKey();
+            channel.attr(key).set(e.getValue());
+        }
+    }
 
 
 
@@ -446,33 +470,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         return Collections.unmodifiableMap(new HashMap<K, V>(map));
     }
 
-    static void setAttributes(Channel channel, Map.Entry<AttributeKey<?>, Object>[] attrs) {
-        for (Map.Entry<AttributeKey<?>, Object> e : attrs) {
-            @SuppressWarnings("unchecked")
-            AttributeKey<Object> key = (AttributeKey<Object>) e.getKey();
-            channel.attr(key).set(e.getValue());
-        }
-    }
 
-    static void setChannelOptions(
-            Channel channel, Map.Entry<ChannelOption<?>, Object>[] options, InternalLogger logger) {
-        for (Map.Entry<ChannelOption<?>, Object> e : options) {
-            setChannelOption(channel, e.getKey(), e.getValue(), logger);
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static void setChannelOption(
-            Channel channel, ChannelOption<?> option, Object value, InternalLogger logger) {
-        try {
-            if (!channel.config().setOption((ChannelOption<Object>) option, value)) {
-                logger.warn("Unknown channel option '{}' for channel '{}'", option, channel);
-            }
-        } catch (Throwable t) {
-            logger.warn(
-                    "Failed to set channel option '{}' with value '{}' for channel '{}'", option, value, channel, t);
-        }
-    }
 
     @Override
     public String toString() {

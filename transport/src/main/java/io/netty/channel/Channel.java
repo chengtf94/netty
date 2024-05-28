@@ -194,91 +194,68 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
     Channel flush();
 
     /**
-     * <em>Unsafe</em> operations that should <em>never</em> be called from user-code. These methods
-     * are only provided to implement the actual transport, and must be invoked from an I/O thread except for the
-     * following methods:
-     * <ul>
-     *   <li>{@link #localAddress()}</li>
-     *   <li>{@link #remoteAddress()}</li>
-     *   <li>{@link #closeForcibly()}</li>
-     *   <li>{@link #register(EventLoop, ChannelPromise)}</li>
-     *   <li>{@link #deregister(ChannelPromise)}</li>
-     *   <li>{@link #voidPromise()}</li>
-     * </ul>
+     * Unsafe为Channel接口的一个内部接口，用于定义实现对Channel底层的各种操作。
+     * Unsafe接口定义的操作行为只能由Netty框架的Reactor线程调用，用户线程禁止调用。
      */
     interface Unsafe {
 
         /**
-         * Return the assigned {@link RecvByteBufAllocator.Handle} which will be used to allocate {@link ByteBuf}'s when
-         * receiving data.
+         * 分配接收数据使用的Buffer
          */
         RecvByteBufAllocator.Handle recvBufAllocHandle();
 
         /**
-         * Return the {@link SocketAddress} to which is bound local or
-         * {@code null} if none.
+         * 服务端绑定的端口地址
          */
         SocketAddress localAddress();
 
         /**
-         * Return the {@link SocketAddress} to which is bound remote or
-         * {@code null} if none is bound yet.
+         * 远端地址
          */
         SocketAddress remoteAddress();
 
         /**
-         * Register the {@link Channel} of the {@link ChannelPromise} and notify
-         * the {@link ChannelFuture} once the registration was complete.
+         * Channel向Reactor注册
          */
         void register(EventLoop eventLoop, ChannelPromise promise);
 
         /**
-         * Bind the {@link SocketAddress} to the {@link Channel} of the {@link ChannelPromise} and notify
-         * it once its done.
+         * 服务端绑定端口地址
          */
         void bind(SocketAddress localAddress, ChannelPromise promise);
 
         /**
-         * Connect the {@link Channel} of the given {@link ChannelFuture} with the given remote {@link SocketAddress}.
-         * If a specific local {@link SocketAddress} should be used it need to be given as argument. Otherwise just
-         * pass {@code null} to it.
-         *
-         * The {@link ChannelPromise} will get notified once the connect operation was complete.
+         * 客户端连接服务端
          */
         void connect(SocketAddress remoteAddress, SocketAddress localAddress, ChannelPromise promise);
 
         /**
-         * Disconnect the {@link Channel} of the {@link ChannelFuture} and notify the {@link ChannelPromise} once the
-         * operation was complete.
+         * 客户端断开连接服务端
          */
         void disconnect(ChannelPromise promise);
 
         /**
-         * Close the {@link Channel} of the {@link ChannelPromise} and notify the {@link ChannelPromise} once the
-         * operation was complete.
+         * 关闭Channel
          */
         void close(ChannelPromise promise);
 
         /**
-         * Closes the {@link Channel} immediately without firing any events.  Probably only useful
-         * when registration attempt failed.
+         * 强制关闭Channel
          */
         void closeForcibly();
 
         /**
-         * Deregister the {@link Channel} of the {@link ChannelPromise} from {@link EventLoop} and notify the
-         * {@link ChannelPromise} once the operation was complete.
+         * Channel向Reactor取消注册
          */
         void deregister(ChannelPromise promise);
 
         /**
-         * Schedules a read operation that fills the inbound buffer of the first {@link ChannelInboundHandler} in the
-         * {@link ChannelPipeline}.  If there's already a pending read operation, this method does nothing.
+         * 读数据
          */
         void beginRead();
 
         /**
-         * Schedules a write operation.
+         * 写数据
          */
         void write(Object msg, ChannelPromise promise);
 

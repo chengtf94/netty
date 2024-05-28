@@ -33,8 +33,9 @@ import java.util.concurrent.ConcurrentHashMap;
 public abstract class ChannelInitializer<C extends Channel> extends ChannelInboundHandlerAdapter {
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(ChannelInitializer.class);
 
-    // We use a Set as a ChannelInitializer is usually shared between all Channels in a Bootstrap /
-    // ServerBootstrap. This way we can reduce the memory usage compared to use Attributes.
+    /** ChannelInitializer实例是被所有的Channel共享的，用于初始化ChannelPipeline
+     * 通过Set集合保存已经初始化的ChannelPipeline，避免重复初始化同一ChannelPipeline
+     * */
     private final Set<ChannelHandlerContext> initMap = Collections.newSetFromMap(
             new ConcurrentHashMap<ChannelHandlerContext, Boolean>());
 
@@ -67,6 +68,7 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
             } finally {
                 ChannelPipeline pipeline = ctx.pipeline();
                 if (pipeline.context(this) != null) {
+                    // 初始化完毕后，从pipeline中移除自身
                     pipeline.remove(this);
                 }
             }
@@ -76,17 +78,9 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
     }
 
     /**
-     * 回调函数：用户可以自定义ChannelHandler的添加行为
+     * 回调函数：用户可以自定义ChannelHandler的添加行为（具体的初始化逻辑），匿名类实现
      */
     protected abstract void initChannel(C ch) throws Exception;
-
-    @Override
-    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
-        if (logger.isWarnEnabled()) {
-            logger.warn("Failed to initialize a channel. Closing: " + ctx.channel(), cause);
-        }
-        ctx.close();
-    }
 
     @Override
     public void handlerAdded(ChannelHandlerContext ctx) throws Exception {
@@ -96,21 +90,16 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
             // surprises if a ChannelInitializer will add another ChannelInitializer. This is as all handlers
             // will be added in the expected order.
             if (initChannel(ctx)) {
-
-                // We are done with init the Channel, removing the initializer now.
+                // 初始化工作完成后，需要将自身从pipeline中移除
                 removeState(ctx);
             }
         }
     }
 
-    @Override
-    public void handlerRemoved(ChannelHandlerContext ctx) throws Exception {
-        initMap.remove(ctx);
-    }
-
     private void removeState(final ChannelHandlerContext ctx) {
         // The removal may happen in an async fashion if the EventExecutor we use does something funky.
         if (ctx.isRemoved()) {
+            // 从initMap防重Set集合中删除ChannelInitializer
             initMap.remove(ctx);
         } else {
             // The context is not removed yet which is most likely the case because a custom EventExecutor is used.
@@ -123,5 +112,26 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
             });
         }
     }
+
+
+
+
+
+    @Override
+    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+        if (logger.isWarnEnabled()) {
+            logger.warn("Failed to initialize a channel. Closing: " + ctx.channel(), cause);
+        }
+        ctx.close();
+    }
+
+
+
+    @Override
+    public void handlerRemoved(ChannelHandlerContext ctx) throws Exception {
+        initMap.remove(ctx);
+    }
+
+
 
 }

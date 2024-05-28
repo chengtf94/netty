@@ -40,11 +40,10 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 /**
- * The default {@link ChannelPipeline} implementation.  It is usually created
- * by a {@link Channel} implementation when the {@link Channel} is created.
+ * 默认ChannelPipeline：其实是一个ChannelHandlerContext类型的双向链表。
+ * 头结点HeadContext，尾结点TailContext，ChannelHandlerContext中包装着ChannelHandler。
  */
 public class DefaultChannelPipeline implements ChannelPipeline {
-
     static final InternalLogger logger = InternalLoggerFactory.getInstance(DefaultChannelPipeline.class);
 
     private static final String HEAD_NAME = generateName0(HeadContext.class);
@@ -89,6 +88,9 @@ public class DefaultChannelPipeline implements ChannelPipeline {
      */
     private boolean registered;
 
+    /**
+     * 构造方法
+     */
     protected DefaultChannelPipeline(Channel channel) {
         this.channel = ObjectUtil.checkNotNull(channel, "channel");
         succeededFuture = new SucceededChannelFuture(channel, null);
@@ -100,6 +102,70 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         head.next = tail;
         tail.prev = head;
     }
+
+    final void invokeHandlerAddedIfNeeded() {
+        assert channel.eventLoop().inEventLoop();
+        if (firstRegistration) {
+            firstRegistration = false;
+            // We are now registered to the EventLoop. It's time to call the callbacks for the ChannelHandlers,
+            // that were added before the registration was done.
+            callHandlerAddedForAllHandlers();
+        }
+    }
+
+    private void callHandlerAddedForAllHandlers() {
+        final PendingHandlerCallback pendingHandlerCallbackHead;
+        synchronized (this) {
+            assert !registered;
+
+            // This Channel itself was registered.
+            registered = true;
+
+            pendingHandlerCallbackHead = this.pendingHandlerCallbackHead;
+            // Null out so it can be GC'ed.
+            this.pendingHandlerCallbackHead = null;
+        }
+
+        // This must happen outside of the synchronized(...) block as otherwise handlerAdded(...) may be called while
+        // holding the lock and so produce a deadlock if handlerAdded(...) will try to add another handler from outside
+        // the EventLoop.
+        PendingHandlerCallback task = pendingHandlerCallbackHead;
+        while (task != null) {
+            task.execute();
+            task = task.next;
+        }
+    }
+
+    private void callHandlerAdded0(final AbstractChannelHandlerContext ctx) {
+        try {
+            ctx.callHandlerAdded();
+        } catch (Throwable t) {
+            boolean removed = false;
+            try {
+                atomicRemoveFromHandlerList(ctx);
+                ctx.callHandlerRemoved();
+                removed = true;
+            } catch (Throwable t2) {
+                if (logger.isWarnEnabled()) {
+                    logger.warn("Failed to remove a handler: " + ctx.name(), t2);
+                }
+            }
+
+            if (removed) {
+                fireExceptionCaught(new ChannelPipelineException(
+                        ctx.handler().getClass().getName() +
+                                ".handlerAdded() has thrown an exception; removed.", t));
+            } else {
+                fireExceptionCaught(new ChannelPipelineException(
+                        ctx.handler().getClass().getName() +
+                                ".handlerAdded() has thrown an exception; also failed to remove.", t));
+            }
+        }
+    }
+
+
+
+
 
     final MessageSizeEstimator.Handle estimatorHandle() {
         MessageSizeEstimator.Handle handle = estimatorHandle;
@@ -604,32 +670,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         }
     }
 
-    private void callHandlerAdded0(final AbstractChannelHandlerContext ctx) {
-        try {
-            ctx.callHandlerAdded();
-        } catch (Throwable t) {
-            boolean removed = false;
-            try {
-                atomicRemoveFromHandlerList(ctx);
-                ctx.callHandlerRemoved();
-                removed = true;
-            } catch (Throwable t2) {
-                if (logger.isWarnEnabled()) {
-                    logger.warn("Failed to remove a handler: " + ctx.name(), t2);
-                }
-            }
 
-            if (removed) {
-                fireExceptionCaught(new ChannelPipelineException(
-                        ctx.handler().getClass().getName() +
-                        ".handlerAdded() has thrown an exception; removed.", t));
-            } else {
-                fireExceptionCaught(new ChannelPipelineException(
-                        ctx.handler().getClass().getName() +
-                        ".handlerAdded() has thrown an exception; also failed to remove.", t));
-            }
-        }
-    }
 
     private void callHandlerRemoved0(final AbstractChannelHandlerContext ctx) {
         // Notify the complete removal.
@@ -641,15 +682,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         }
     }
 
-    final void invokeHandlerAddedIfNeeded() {
-        assert channel.eventLoop().inEventLoop();
-        if (firstRegistration) {
-            firstRegistration = false;
-            // We are now registered to the EventLoop. It's time to call the callbacks for the ChannelHandlers,
-            // that were added before the registration was done.
-            callHandlerAddedForAllHandlers();
-        }
-    }
+
 
     @Override
     public final ChannelHandler first() {
@@ -1094,28 +1127,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         }
     }
 
-    private void callHandlerAddedForAllHandlers() {
-        final PendingHandlerCallback pendingHandlerCallbackHead;
-        synchronized (this) {
-            assert !registered;
 
-            // This Channel itself was registered.
-            registered = true;
-
-            pendingHandlerCallbackHead = this.pendingHandlerCallbackHead;
-            // Null out so it can be GC'ed.
-            this.pendingHandlerCallbackHead = null;
-        }
-
-        // This must happen outside of the synchronized(...) block as otherwise handlerAdded(...) may be called while
-        // holding the lock and so produce a deadlock if handlerAdded(...) will try to add another handler from outside
-        // the EventLoop.
-        PendingHandlerCallback task = pendingHandlerCallbackHead;
-        while (task != null) {
-            task.execute();
-            task = task.next;
-        }
-    }
 
     private void callHandlerCallbackLater(AbstractChannelHandlerContext ctx, boolean added) {
         assert !registered;

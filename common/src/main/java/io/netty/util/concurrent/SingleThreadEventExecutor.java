@@ -48,18 +48,10 @@ import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
  *
  */
 public abstract class SingleThreadEventExecutor extends AbstractScheduledEventExecutor implements OrderedEventExecutor {
+    private static final InternalLogger logger = InternalLoggerFactory.getInstance(SingleThreadEventExecutor.class);
 
     static final int DEFAULT_MAX_PENDING_EXECUTOR_TASKS = Math.max(16,
             SystemPropertyUtil.getInt("io.netty.eventexecutor.maxPendingTasks", Integer.MAX_VALUE));
-
-    private static final InternalLogger logger =
-            InternalLoggerFactory.getInstance(SingleThreadEventExecutor.class);
-
-    private static final int ST_NOT_STARTED = 1;
-    private static final int ST_STARTED = 2;
-    private static final int ST_SHUTTING_DOWN = 3;
-    private static final int ST_SHUTDOWN = 4;
-    private static final int ST_TERMINATED = 5;
 
     private static final Runnable NOOP_TASK = new Runnable() {
         @Override
@@ -68,8 +60,6 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         }
     };
 
-    private static final AtomicIntegerFieldUpdater<SingleThreadEventExecutor> STATE_UPDATER =
-            AtomicIntegerFieldUpdater.newUpdater(SingleThreadEventExecutor.class, "state");
     private static final AtomicReferenceFieldUpdater<SingleThreadEventExecutor, ThreadProperties> PROPERTIES_UPDATER =
             AtomicReferenceFieldUpdater.newUpdater(
                     SingleThreadEventExecutor.class, ThreadProperties.class, "threadProperties");
@@ -78,12 +68,30 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
      * 普通任务队列：是Netty最主要执行的异步任务
      */
     private final Queue<Runnable> taskQueue;
-
+    /**
+     * ThreadPerTaskExecutor用于启动Reactor线程
+     */
+    private final Executor executor;
     private volatile Thread thread;
     @SuppressWarnings("unused")
     private volatile ThreadProperties threadProperties;
-    private final Executor executor;
     private volatile boolean interrupted;
+
+    /**
+     * Reactor线程状态：
+     */
+    @SuppressWarnings({ "FieldMayBeFinal", "unused" })
+    private volatile int state = ST_NOT_STARTED;
+    private static final int ST_NOT_STARTED = 1;
+    private static final int ST_STARTED = 2;
+    private static final int ST_SHUTTING_DOWN = 3;
+    private static final int ST_SHUTDOWN = 4;
+    private static final int ST_TERMINATED = 5;
+    /**
+     * Reactor线程状态字段state 原子更新器
+     */
+    private static final AtomicIntegerFieldUpdater<SingleThreadEventExecutor> STATE_UPDATER =
+            AtomicIntegerFieldUpdater.newUpdater(SingleThreadEventExecutor.class, "state");
 
     private final CountDownLatch threadLock = new CountDownLatch(1);
     private final Set<Runnable> shutdownHooks = new LinkedHashSet<Runnable>();
@@ -93,9 +101,6 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     private long lastExecutionTime;
 
-    @SuppressWarnings({ "FieldMayBeFinal", "unused" })
-    private volatile int state = ST_NOT_STARTED;
-
     private volatile long gracefulShutdownQuietPeriod;
     private volatile long gracefulShutdownTimeout;
     private long gracefulShutdownStartTime;
@@ -103,56 +108,20 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     private final Promise<?> terminationFuture = new DefaultPromise<Void>(GlobalEventExecutor.INSTANCE);
 
     /**
-     * Create a new instance
-     *
-     * @param parent            the {@link EventExecutorGroup} which is the parent of this instance and belongs to it
-     * @param threadFactory     the {@link ThreadFactory} which will be used for the used {@link Thread}
-     * @param addTaskWakesUp    {@code true} if and only if invocation of {@link #addTask(Runnable)} will wake up the
-     *                          executor thread
+     * 构造方法
      */
     protected SingleThreadEventExecutor(
             EventExecutorGroup parent, ThreadFactory threadFactory, boolean addTaskWakesUp) {
         this(parent, new ThreadPerTaskExecutor(threadFactory), addTaskWakesUp);
     }
-
-    /**
-     * Create a new instance
-     *
-     * @param parent            the {@link EventExecutorGroup} which is the parent of this instance and belongs to it
-     * @param threadFactory     the {@link ThreadFactory} which will be used for the used {@link Thread}
-     * @param addTaskWakesUp    {@code true} if and only if invocation of {@link #addTask(Runnable)} will wake up the
-     *                          executor thread
-     * @param maxPendingTasks   the maximum number of pending tasks before new tasks will be rejected.
-     * @param rejectedHandler   the {@link RejectedExecutionHandler} to use.
-     */
     protected SingleThreadEventExecutor(
             EventExecutorGroup parent, ThreadFactory threadFactory,
             boolean addTaskWakesUp, int maxPendingTasks, RejectedExecutionHandler rejectedHandler) {
         this(parent, new ThreadPerTaskExecutor(threadFactory), addTaskWakesUp, maxPendingTasks, rejectedHandler);
     }
-
-    /**
-     * Create a new instance
-     *
-     * @param parent            the {@link EventExecutorGroup} which is the parent of this instance and belongs to it
-     * @param executor          the {@link Executor} which will be used for executing
-     * @param addTaskWakesUp    {@code true} if and only if invocation of {@link #addTask(Runnable)} will wake up the
-     *                          executor thread
-     */
     protected SingleThreadEventExecutor(EventExecutorGroup parent, Executor executor, boolean addTaskWakesUp) {
         this(parent, executor, addTaskWakesUp, DEFAULT_MAX_PENDING_EXECUTOR_TASKS, RejectedExecutionHandlers.reject());
     }
-
-    /**
-     * Create a new instance
-     *
-     * @param parent            the {@link EventExecutorGroup} which is the parent of this instance and belongs to it
-     * @param executor          the {@link Executor} which will be used for executing
-     * @param addTaskWakesUp    {@code true} if and only if invocation of {@link #addTask(Runnable)} will wake up the
-     *                          executor thread
-     * @param maxPendingTasks   the maximum number of pending tasks before new tasks will be rejected.
-     * @param rejectedHandler   the {@link RejectedExecutionHandler} to use.
-     */
     protected SingleThreadEventExecutor(EventExecutorGroup parent, Executor executor,
                                         boolean addTaskWakesUp, int maxPendingTasks,
                                         RejectedExecutionHandler rejectedHandler) {
@@ -182,24 +151,188 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         this.taskQueue = ObjectUtil.checkNotNull(taskQueue, "taskQueue");
         this.rejectedExecutionHandler = ObjectUtil.checkNotNull(rejectedHandler, "rejectedHandler");
     }
-
-    /**
-     * @deprecated Please use and override {@link #newTaskQueue(int)}.
-     */
     @Deprecated
     protected Queue<Runnable> newTaskQueue() {
         return newTaskQueue(maxPendingTasks);
     }
-
-    /**
-     * Create a new {@link Queue} which will holds the tasks to execute. This default implementation will return a
-     * {@link LinkedBlockingQueue} but if your sub-class of {@link SingleThreadEventExecutor} will not do any blocking
-     * calls on the this {@link Queue} it may make sense to {@code @Override} this and return some more performant
-     * implementation that does not support blocking operations at all.
-     */
     protected Queue<Runnable> newTaskQueue(int maxPendingTasks) {
         return new LinkedBlockingQueue<Runnable>(maxPendingTasks);
     }
+
+    @Override
+    public void execute(Runnable task) {
+        ObjectUtil.checkNotNull(task, "task");
+        execute(task, !(task instanceof LazyRunnable) && wakesUpForTask(task));
+    }
+
+    private void execute(Runnable task, boolean immediate) {
+        // 当前线程是否为Reactor线程
+        boolean inEventLoop = inEventLoop();
+       // addTaskWakesUp = true  addTask唤醒Reactor线程执行任务
+        addTask(task);
+        if (!inEventLoop) {
+            //如果当前线程不是Reactor线程，则启动Reactor线程：Reactor线程的启动是通过 向NioEventLoop添加异步任务时启动的
+            startThread();
+            if (isShutdown()) {
+                boolean reject = false;
+                try {
+                    if (removeTask(task)) {
+                        reject = true;
+                    }
+                } catch (UnsupportedOperationException e) {
+                    // The task queue does not support removal so the best thing we can do is to just move on and
+                    // hope we will be able to pick-up the task before its completely terminated.
+                    // In worst case we will log on termination.
+                }
+                if (reject) {
+                    reject();
+                }
+            }
+        }
+
+        if (!addTaskWakesUp && immediate) {
+            wakeup(inEventLoop);
+        }
+    }
+
+    @Override
+    public boolean inEventLoop(Thread thread) {
+        return thread == this.thread;
+    }
+
+    /**
+     * Add a task to the task queue
+     */
+    protected void addTask(Runnable task) {
+        ObjectUtil.checkNotNull(task, "task");
+        if (!offerTask(task)) {
+            reject(task);
+        }
+    }
+
+    final boolean offerTask(Runnable task) {
+        if (isShutdown()) {
+            reject();
+        }
+        return taskQueue.offer(task);
+    }
+
+    protected final void reject(Runnable task) {
+        rejectedExecutionHandler.rejected(task, this);
+    }
+
+    private void startThread() {
+        if (state == ST_NOT_STARTED) {
+            if (STATE_UPDATER.compareAndSet(this, ST_NOT_STARTED, ST_STARTED)) {
+                boolean success = false;
+                try {
+                    doStartThread();
+                    success = true;
+                } finally {
+                    if (!success) {
+                        STATE_UPDATER.compareAndSet(this, ST_STARTED, ST_NOT_STARTED);
+                    }
+                }
+            }
+        }
+    }
+
+    private void doStartThread() {
+        assert thread == null;
+        executor.execute(new Runnable() {
+            @Override
+            public void run() {
+                thread = Thread.currentThread();
+                if (interrupted) {
+                    thread.interrupt();
+                }
+
+                boolean success = false;
+                updateLastExecutionTime();
+                try {
+                    // Reactor线程开始启动
+                    SingleThreadEventExecutor.this.run();
+                    success = true;
+                } catch (Throwable t) {
+                    logger.warn("Unexpected exception from an event executor: ", t);
+                } finally {
+                    for (;;) {
+                        int oldState = state;
+                        if (oldState >= ST_SHUTTING_DOWN || STATE_UPDATER.compareAndSet(
+                                SingleThreadEventExecutor.this, oldState, ST_SHUTTING_DOWN)) {
+                            break;
+                        }
+                    }
+
+                    // Check if confirmShutdown() was called at the end of the loop.
+                    if (success && gracefulShutdownStartTime == 0) {
+                        if (logger.isErrorEnabled()) {
+                            logger.error("Buggy " + EventExecutor.class.getSimpleName() + " implementation; " +
+                                    SingleThreadEventExecutor.class.getSimpleName() + ".confirmShutdown() must " +
+                                    "be called before run() implementation terminates.");
+                        }
+                    }
+
+                    try {
+                        // Run all remaining tasks and shutdown hooks. At this point the event loop
+                        // is in ST_SHUTTING_DOWN state still accepting tasks which is needed for
+                        // graceful shutdown with quietPeriod.
+                        for (;;) {
+                            if (confirmShutdown()) {
+                                break;
+                            }
+                        }
+
+                        // Now we want to make sure no more tasks can be added from this point. This is
+                        // achieved by switching the state. Any new tasks beyond this point will be rejected.
+                        for (;;) {
+                            int oldState = state;
+                            if (oldState >= ST_SHUTDOWN || STATE_UPDATER.compareAndSet(
+                                    SingleThreadEventExecutor.this, oldState, ST_SHUTDOWN)) {
+                                break;
+                            }
+                        }
+
+                        // We have the final set of tasks in the queue now, no more can be added, run all remaining.
+                        // No need to loop here, this is the final pass.
+                        confirmShutdown();
+                    } finally {
+                        try {
+                            cleanup();
+                        } finally {
+                            // Lets remove all FastThreadLocals for the Thread as we are about to terminate and notify
+                            // the future. The user may block on the future and once it unblocks the JVM may terminate
+                            // and start unloading classes.
+                            // See https://github.com/netty/netty/issues/6596.
+                            FastThreadLocal.removeAll();
+
+                            STATE_UPDATER.set(SingleThreadEventExecutor.this, ST_TERMINATED);
+                            threadLock.countDown();
+                            int numUserTasks = drainTasks();
+                            if (numUserTasks > 0 && logger.isWarnEnabled()) {
+                                logger.warn("An event executor terminated with " +
+                                        "non-empty task queue (" + numUserTasks + ')');
+                            }
+                            terminationFuture.setSuccess(null);
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * Run the tasks in the {@link #taskQueue}
+     * Reactor线程的核心工作：轮询所有注册其上的Channel中的IO就绪事件，处理对应Channel上的IO事件，执行异步任务。
+     * Netty将这些核心工作封装在io.netty.channel.nio.NioEventLoop#run方法中。
+     */
+    protected abstract void run();
+
+
+
+
+
+
 
     /**
      * Interrupt the current running {@link Thread}.
@@ -348,23 +481,9 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         return taskQueue.size();
     }
 
-    /**
-     * Add a task to the task queue, or throws a {@link RejectedExecutionException} if this instance was shutdown
-     * before.
-     */
-    protected void addTask(Runnable task) {
-        ObjectUtil.checkNotNull(task, "task");
-        if (!offerTask(task)) {
-            reject(task);
-        }
-    }
 
-    final boolean offerTask(Runnable task) {
-        if (isShutdown()) {
-            reject();
-        }
-        return taskQueue.offer(task);
-    }
+
+
 
     /**
      * @see Queue#remove(Object)
@@ -547,10 +666,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         lastExecutionTime = ScheduledFutureTask.nanoTime();
     }
 
-    /**
-     * Run the tasks in the {@link #taskQueue}
-     */
-    protected abstract void run();
+
 
     /**
      * Do nothing, sub-classes may override
@@ -567,10 +683,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         }
     }
 
-    @Override
-    public boolean inEventLoop(Thread thread) {
-        return thread == this.thread;
-    }
+
 
     /**
      * Add a {@link Runnable} which will be executed on shutdown of this instance
@@ -824,42 +937,11 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     }
 
     @Override
-    public void execute(Runnable task) {
-        ObjectUtil.checkNotNull(task, "task");
-        execute(task, !(task instanceof LazyRunnable) && wakesUpForTask(task));
-    }
-
-    @Override
     public void lazyExecute(Runnable task) {
         execute(ObjectUtil.checkNotNull(task, "task"), false);
     }
 
-    private void execute(Runnable task, boolean immediate) {
-        boolean inEventLoop = inEventLoop();
-        addTask(task);
-        if (!inEventLoop) {
-            startThread();
-            if (isShutdown()) {
-                boolean reject = false;
-                try {
-                    if (removeTask(task)) {
-                        reject = true;
-                    }
-                } catch (UnsupportedOperationException e) {
-                    // The task queue does not support removal so the best thing we can do is to just move on and
-                    // hope we will be able to pick-up the task before its completely terminated.
-                    // In worst case we will log on termination.
-                }
-                if (reject) {
-                    reject();
-                }
-            }
-        }
 
-        if (!addTaskWakesUp && immediate) {
-            wakeup(inEventLoop);
-        }
-    }
 
     @Override
     public <T> T invokeAny(Collection<? extends Callable<T>> tasks) throws InterruptedException, ExecutionException {
@@ -937,34 +1019,12 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         throw new RejectedExecutionException("event executor terminated");
     }
 
-    /**
-     * Offers the task to the associated {@link RejectedExecutionHandler}.
-     *
-     * @param task to reject.
-     */
-    protected final void reject(Runnable task) {
-        rejectedExecutionHandler.rejected(task, this);
-    }
 
     // ScheduledExecutorService implementation
 
     private static final long SCHEDULE_PURGE_INTERVAL = TimeUnit.SECONDS.toNanos(1);
 
-    private void startThread() {
-        if (state == ST_NOT_STARTED) {
-            if (STATE_UPDATER.compareAndSet(this, ST_NOT_STARTED, ST_STARTED)) {
-                boolean success = false;
-                try {
-                    doStartThread();
-                    success = true;
-                } finally {
-                    if (!success) {
-                        STATE_UPDATER.compareAndSet(this, ST_STARTED, ST_NOT_STARTED);
-                    }
-                }
-            }
-        }
-    }
+
 
     private boolean ensureThreadStarted(int oldState) {
         if (oldState == ST_NOT_STARTED) {
@@ -984,88 +1044,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         return false;
     }
 
-    private void doStartThread() {
-        assert thread == null;
-        executor.execute(new Runnable() {
-            @Override
-            public void run() {
-                thread = Thread.currentThread();
-                if (interrupted) {
-                    thread.interrupt();
-                }
 
-                boolean success = false;
-                updateLastExecutionTime();
-                try {
-                    SingleThreadEventExecutor.this.run();
-                    success = true;
-                } catch (Throwable t) {
-                    logger.warn("Unexpected exception from an event executor: ", t);
-                } finally {
-                    for (;;) {
-                        int oldState = state;
-                        if (oldState >= ST_SHUTTING_DOWN || STATE_UPDATER.compareAndSet(
-                                SingleThreadEventExecutor.this, oldState, ST_SHUTTING_DOWN)) {
-                            break;
-                        }
-                    }
-
-                    // Check if confirmShutdown() was called at the end of the loop.
-                    if (success && gracefulShutdownStartTime == 0) {
-                        if (logger.isErrorEnabled()) {
-                            logger.error("Buggy " + EventExecutor.class.getSimpleName() + " implementation; " +
-                                    SingleThreadEventExecutor.class.getSimpleName() + ".confirmShutdown() must " +
-                                    "be called before run() implementation terminates.");
-                        }
-                    }
-
-                    try {
-                        // Run all remaining tasks and shutdown hooks. At this point the event loop
-                        // is in ST_SHUTTING_DOWN state still accepting tasks which is needed for
-                        // graceful shutdown with quietPeriod.
-                        for (;;) {
-                            if (confirmShutdown()) {
-                                break;
-                            }
-                        }
-
-                        // Now we want to make sure no more tasks can be added from this point. This is
-                        // achieved by switching the state. Any new tasks beyond this point will be rejected.
-                        for (;;) {
-                            int oldState = state;
-                            if (oldState >= ST_SHUTDOWN || STATE_UPDATER.compareAndSet(
-                                    SingleThreadEventExecutor.this, oldState, ST_SHUTDOWN)) {
-                                break;
-                            }
-                        }
-
-                        // We have the final set of tasks in the queue now, no more can be added, run all remaining.
-                        // No need to loop here, this is the final pass.
-                        confirmShutdown();
-                    } finally {
-                        try {
-                            cleanup();
-                        } finally {
-                            // Lets remove all FastThreadLocals for the Thread as we are about to terminate and notify
-                            // the future. The user may block on the future and once it unblocks the JVM may terminate
-                            // and start unloading classes.
-                            // See https://github.com/netty/netty/issues/6596.
-                            FastThreadLocal.removeAll();
-
-                            STATE_UPDATER.set(SingleThreadEventExecutor.this, ST_TERMINATED);
-                            threadLock.countDown();
-                            int numUserTasks = drainTasks();
-                            if (numUserTasks > 0 && logger.isWarnEnabled()) {
-                                logger.warn("An event executor terminated with " +
-                                        "non-empty task queue (" + numUserTasks + ')');
-                            }
-                            terminationFuture.setSuccess(null);
-                        }
-                    }
-                }
-            }
-        });
-    }
 
     final int drainTasks() {
         int numTasks = 0;

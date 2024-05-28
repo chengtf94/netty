@@ -47,7 +47,6 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
     private final Map<AttributeKey<?>, Object> childAttrs = new ConcurrentHashMap<AttributeKey<?>, Object>();
     private final ServerBootstrapConfig config = new ServerBootstrapConfig(this);
 
-
     /**
      * 构造方法
      */
@@ -120,28 +119,37 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
 
     @Override
     void init(Channel channel) {
+        // 向NioServerSocketChannelConfig设置ServerSocketChannelOption
         setChannelOptions(channel, newOptionsArray(), logger);
+        // 向NioServerSocketChannel设置attributes
         setAttributes(channel, attrs0().entrySet().toArray(EMPTY_ATTRIBUTE_ARRAY));
 
         ChannelPipeline p = channel.pipeline();
 
+        // 获取从Reactor线程组
         final EventLoopGroup currentChildGroup = childGroup;
+        // 获取用于初始化客户端NioSocketChannel的ChannelInitializer
         final ChannelHandler currentChildHandler = childHandler;
+        // 获取用户配置的客户端SocketChannel的channelOption以及attributes
         final Entry<ChannelOption<?>, Object>[] currentChildOptions;
         synchronized (childOptions) {
             currentChildOptions = childOptions.entrySet().toArray(EMPTY_OPTION_ARRAY);
         }
         final Entry<AttributeKey<?>, Object>[] currentChildAttrs = childAttrs.entrySet().toArray(EMPTY_ATTRIBUTE_ARRAY);
-
+        // 向NioServerSocketChannel中的pipeline添加初始化ChannelHandler的逻辑
+        // 使用ChannelInitializer：为了保证线程安全地初始化pipeline，所以初始化的动作需要由Reactor线程进行，而当前线程是用户程序的启动Main线程。
+        // 初始化Channel中pipeline的动作，需要等到Channel注册到对应的Reactor中才可以进行初始化，当前只是创建好了NioServerSocketChannel，但并未注册到主Reactor上。
         p.addLast(new ChannelInitializer<Channel>() {
             @Override
             public void initChannel(final Channel ch) {
                 final ChannelPipeline pipeline = ch.pipeline();
+                // ServerBootstrap中用户指定的ChannelHandler
                 ChannelHandler handler = config.handler();
                 if (handler != null) {
+                    // LoggingHandler
                     pipeline.addLast(handler);
                 }
-
+                // 添加用于接收客户端连接的Acceptor
                 ch.eventLoop().execute(new Runnable() {
                     @Override
                     public void run() {

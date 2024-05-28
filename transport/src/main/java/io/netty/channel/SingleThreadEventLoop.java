@@ -71,15 +71,19 @@ public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor im
         return (EventLoop) super.next();
     }
 
+    /**
+     * 注册channel到绑定的Reactor上
+==
+     */
     @Override
     public ChannelFuture register(Channel channel) {
-        // 注册channel到绑定的Reactor上
         return register(new DefaultChannelPromise(channel, this));
     }
 
     @Override
     public ChannelFuture register(final ChannelPromise promise) {
         ObjectUtil.checkNotNull(promise, "promise");
+        // unsafe负责channel底层的各种操作
         promise.channel().unsafe().register(this, promise);
         return promise;
     }
@@ -92,6 +96,16 @@ public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor im
         channel.unsafe().register(this, promise);
         return promise;
     }
+
+
+
+
+
+
+
+
+
+
 
     /**
      * Adds a task to be run once at the end of next (or current) {@code eventloop} iteration.
