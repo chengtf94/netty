@@ -25,7 +25,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 基于NIO模型的ServerSocketChannel
+ * 基于NIO模型的ServerSocketChannel：对应监听Socket，负责绑定监听端口地址，接收客户端连接并创建用于与客户端通信的SocketChannel。
  */
 public class NioServerSocketChannel extends AbstractNioMessageChannel
                              implements io.netty.channel.socket.ServerSocketChannel {

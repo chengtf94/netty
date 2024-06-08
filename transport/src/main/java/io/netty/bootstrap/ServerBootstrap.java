@@ -39,8 +39,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 /**
- * {@link Bootstrap} sub-class which allows easy bootstrap of {@link ServerChannel}
- *
+ * 服务端启动辅助类，用于设置一系列参数来绑定端口启动服务
  */
 public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerChannel> {
 

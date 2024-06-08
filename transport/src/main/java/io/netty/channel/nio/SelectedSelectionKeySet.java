@@ -8,6 +8,8 @@ import java.util.NoSuchElementException;
 
 /**
  * SelectedSelectionKeySet：基于数组自定义集合，为了优化对sun.nio.ch.SelectorImpl#selectedKeys集合的插入、遍历性能
+ * 1）HashSet底层数据结构是一个哈希表，由于Hash冲突这种情况的存在，所以导致对哈希表进行插入和遍历操作的性能不如对数组进行插入和遍历操作的性能好
+ * 2）数组可以利用CPU缓存的优势来提高遍历的效率
  */
 final class SelectedSelectionKeySet extends AbstractSet<SelectionKey> {
 

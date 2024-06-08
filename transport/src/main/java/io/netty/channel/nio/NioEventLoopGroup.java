@@ -1,6 +1,5 @@
 package io.netty.channel.nio;
 
-import io.netty.channel.Channel;
 import io.netty.channel.EventLoop;
 import io.netty.channel.DefaultSelectStrategyFactory;
 import io.netty.channel.EventLoopTaskQueueFactory;
@@ -17,7 +16,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadFactory;
 
 /**
- * NioEventLoopGroup：基于NIO模型的EventLoopGroup
+ * NioEventLoopGroup：基于NIO模型的EventLoopGroup，也就是Reactor组
  */
 public class NioEventLoopGroup extends MultithreadEventLoopGroup {
 
@@ -61,7 +60,7 @@ public class NioEventLoopGroup extends MultithreadEventLoopGroup {
 
     /**
      * @param nThreads              当前要创建的Reactor线程组内包含多少个Reactor线程
-     * @param executor              负责启动Reactor线程进而Reactor才可以开始工作
+     * @param executor              负责启动Reactor线程，进而Reactor才可以开始工作
      * @param selectorProvider      用于创建Selector，每个Reactor中都包含一个Selector，用于轮询注册在该Reactor上的所有Channel上的IO事件。
      * @param selectStrategyFactory 轮询策略：轮询注册其上的Channel上的IO就绪事件
      *                              RejectedExecutionHandler 当向Reactor添加异步任务添加失败时，采用的拒绝策略。Reactor的任务不只是监听IO活跃事件和IO任务的处理，还包括对异步任务的处理
@@ -100,6 +99,15 @@ public class NioEventLoopGroup extends MultithreadEventLoopGroup {
         return new NioEventLoop(this, executor, (SelectorProvider) args[0],
                 ((SelectStrategyFactory) args[1]).newSelectStrategy(), (RejectedExecutionHandler) args[2], queueFactory);
     }
+
+
+
+
+
+
+
+
+
 
 
 

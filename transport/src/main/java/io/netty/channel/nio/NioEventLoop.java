@@ -40,16 +40,15 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class NioEventLoop extends SingleThreadEventLoop {
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(NioEventLoop.class);
 
-    private static final int CLEANUP_INTERVAL = 256; // XXX Hard-coded value, but won't need customization.
-
     /**
      * Selector优化开关：通过系统变量-D io.netty.noKeySetOptimization指定，默认是开启的，表示需要对JDK NIO原生Selector进行优化。
+     * 为了遍历的效率，会对Selector中的SelectedKeys进行数据结构优化
      */
     private static final boolean DISABLE_KEY_SET_OPTIMIZATION =
             SystemPropertyUtil.getBoolean("io.netty.noKeySetOptimization", false);
-
     private static final int MIN_PREMATURE_SELECTOR_RETURNS = 3;
     private static final int SELECTOR_AUTO_REBUILD_THRESHOLD;
+    private static final int CLEANUP_INTERVAL = 256; // XXX Hard-coded value, but won't need customization.
 
     private final IntSupplier selectNowSupplier = new IntSupplier() {
         @Override
@@ -102,12 +101,10 @@ public final class NioEventLoop extends SingleThreadEventLoop {
      * 通过反射替换selector对象中的selectedKeySet保存就绪的selectKey，该字段为持有selector对象selectedKeys的引用，当IO事件就绪时，直接从这里获取
      */
     private SelectedSelectionKeySet selectedKeys;
-
     /**
      * 创建JDK NIO Selector,ServerSocketChannel
      */
     private final SelectorProvider provider;
-
     private static final long AWAKE = -1L;
     private static final long NONE = Long.MAX_VALUE;
 
@@ -116,18 +113,18 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     //    NONE             when EL is waiting with no wakeup scheduled
     //    other value T    when EL is waiting with wakeup scheduled at time T
     private final AtomicLong nextWakeupNanos = new AtomicLong(AWAKE);
-
     /**
      * Selector轮询策略：决定什么时候轮询，什么时候处理IO事件，什么时候执行异步任务
      */
     private final SelectStrategy selectStrategy;
-
     private volatile int ioRatio = 50;
     private int cancelledKeys;
     private boolean needsToSelectAgain;
 
     /**
      * 构造方法
+     *
+     * @param queueFactory 任务队列工厂，用于创建队列来保存Reactor中待执行的异步任务
      */
     NioEventLoop(NioEventLoopGroup parent, Executor executor, SelectorProvider selectorProvider,
                  SelectStrategy strategy, RejectedExecutionHandler rejectedExecutionHandler,
@@ -144,21 +141,28 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         this.unwrappedSelector = selectorTuple.unwrappedSelector;
     }
 
-    private static Queue<Runnable> newTaskQueue(
-            EventLoopTaskQueueFactory queueFactory) {
+    /**
+     * 创建任务队列
+     */
+    private static Queue<Runnable> newTaskQueue(EventLoopTaskQueueFactory queueFactory) {
         if (queueFactory == null) {
             return newTaskQueue0(DEFAULT_MAX_PENDING_TASKS);
         }
         return queueFactory.newTaskQueue(DEFAULT_MAX_PENDING_TASKS);
     }
+
     private static Queue<Runnable> newTaskQueue0(int maxPendingTasks) {
         // 创建无界 或 有界任务队列
-        // MpscQueue是由JCTools提供的一个高性能无锁队列，适用于多生产者单消费者的场景，它支持多个生产者线程安全的访问队列，同一时刻只允许一个消费者线程读取队列中的元素。
+        // MpscQueue是由JCTools提供的一个高性能无锁队列，适用于多生产者单消费者的场景，它支持多个生产者线程安全的访问队列，
+        // 同一时刻只允许一个消费者线程读取队列中的元素。
         return maxPendingTasks == Integer.MAX_VALUE
                 ? PlatformDependent.<Runnable>newMpscQueue()
                 : PlatformDependent.<Runnable>newMpscQueue(maxPendingTasks);
     }
 
+    /**
+     * SelectorTuple
+     */
     private static final class SelectorTuple {
 
         /**
@@ -211,8 +215,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             }
         });
         if (!(maybeSelectorImplClass instanceof Class) ||
-            // ensure the current selector implementation is what we can instrument.
-            !((Class<?>) maybeSelectorImplClass).isAssignableFrom(unwrappedSelector.getClass())) {
+                // ensure the current selector implementation is what we can instrument.
+                !((Class<?>) maybeSelectorImplClass).isAssignableFrom(unwrappedSelector.getClass())) {
             if (maybeSelectorImplClass instanceof Throwable) {
                 Throwable t = (Throwable) maybeSelectorImplClass;
                 logger.trace("failed to instrument a special java.util.Set into: {}", unwrappedSelector, t);
@@ -278,7 +282,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         selectedKeys = selectedKeySet;
         logger.trace("instrumented a special java.util.Set into: {}", unwrappedSelector);
         return new SelectorTuple(unwrappedSelector,
-                                 new SelectedSelectionKeySetSelector(unwrappedSelector, selectedKeySet));
+                new SelectedSelectionKeySetSelector(unwrappedSelector, selectedKeySet));
     }
 
     /**
@@ -292,7 +296,6 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     protected Queue<Runnable> newTaskQueue(int maxPendingTasks) {
         return newTaskQueue0(maxPendingTasks);
     }
-
 
 
     /**
@@ -401,7 +404,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
         // Register all channels to the new Selector.
         int nChannels = 0;
-        for (SelectionKey key: oldSelector.keys()) {
+        for (SelectionKey key : oldSelector.keys()) {
             Object a = key.attachment();
             try {
                 if (!key.isValid() || key.channel().keyFor(newSelectorTuple.unwrappedSelector) != null) {
@@ -415,7 +418,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     // Update SelectionKey
                     ((AbstractNioChannel) a).selectionKey = newKey;
                 }
-                nChannels ++;
+                nChannels++;
             } catch (Exception e) {
                 logger.warn("Failed to re-register a Channel to the new Selector.", e);
                 if (a instanceof AbstractNioChannel) {
@@ -449,35 +452,35 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     @Override
     protected void run() {
         int selectCnt = 0;
-        for (;;) {
+        for (; ; ) {
             try {
                 int strategy;
                 try {
                     strategy = selectStrategy.calculateStrategy(selectNowSupplier, hasTasks());
                     switch (strategy) {
-                    case SelectStrategy.CONTINUE:
-                        continue;
+                        case SelectStrategy.CONTINUE:
+                            continue;
 
-                    case SelectStrategy.BUSY_WAIT:
-                        // fall-through to SELECT since the busy-wait is not supported with NIO
+                        case SelectStrategy.BUSY_WAIT:
+                            // fall-through to SELECT since the busy-wait is not supported with NIO
 
-                    case SelectStrategy.SELECT:
-                        long curDeadlineNanos = nextScheduledTaskDeadlineNanos();
-                        if (curDeadlineNanos == -1L) {
-                            curDeadlineNanos = NONE; // nothing on the calendar
-                        }
-                        nextWakeupNanos.set(curDeadlineNanos);
-                        try {
-                            if (!hasTasks()) {
-                                strategy = select(curDeadlineNanos);
+                        case SelectStrategy.SELECT:
+                            long curDeadlineNanos = nextScheduledTaskDeadlineNanos();
+                            if (curDeadlineNanos == -1L) {
+                                curDeadlineNanos = NONE; // nothing on the calendar
                             }
-                        } finally {
-                            // This update is just to help block unnecessary selector wakeups
-                            // so use of lazySet is ok (no race condition)
-                            nextWakeupNanos.lazySet(AWAKE);
-                        }
-                        // fall through
-                    default:
+                            nextWakeupNanos.set(curDeadlineNanos);
+                            try {
+                                if (!hasTasks()) {
+                                    strategy = select(curDeadlineNanos);
+                                }
+                            } finally {
+                                // This update is just to help block unnecessary selector wakeups
+                                // so use of lazySet is ok (no race condition)
+                                nextWakeupNanos.lazySet(AWAKE);
+                            }
+                            // fall through
+                        default:
                     }
                 } catch (IOException e) {
                     // If we receive an IOException here its because the Selector is messed up. Let's rebuild
@@ -610,7 +613,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
     void cancel(SelectionKey key) {
         key.cancel();
-        cancelledKeys ++;
+        cancelledKeys++;
         if (cancelledKeys >= CLEANUP_INTERVAL) {
             cancelledKeys = 0;
             needsToSelectAgain = true;
@@ -626,7 +629,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
 
         Iterator<SelectionKey> i = selectedKeys.iterator();
-        for (;;) {
+        for (; ; ) {
             final SelectionKey k = i.next();
             final Object a = k.attachment();
             i.remove();
@@ -749,17 +752,17 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             state = 2;
         } finally {
             switch (state) {
-            case 0:
-                k.cancel();
-                invokeChannelUnregistered(task, k, null);
-                break;
-            case 1:
-                if (!k.isValid()) { // Cancelled by channelReady()
+                case 0:
+                    k.cancel();
                     invokeChannelUnregistered(task, k, null);
-                }
-                break;
-            default:
-                 break;
+                    break;
+                case 1:
+                    if (!k.isValid()) { // Cancelled by channelReady()
+                        invokeChannelUnregistered(task, k, null);
+                    }
+                    break;
+                default:
+                    break;
             }
         }
     }
@@ -768,7 +771,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         selectAgain();
         Set<SelectionKey> keys = selector.keys();
         Collection<AbstractNioChannel> channels = new ArrayList<AbstractNioChannel>(keys.size());
-        for (SelectionKey k: keys) {
+        for (SelectionKey k : keys) {
             Object a = k.attachment();
             if (a instanceof AbstractNioChannel) {
                 channels.add((AbstractNioChannel) a);
@@ -780,7 +783,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             }
         }
 
-        for (AbstractNioChannel ch: channels) {
+        for (AbstractNioChannel ch : channels) {
             ch.unsafe().close(ch.unsafe().voidPromise());
         }
     }

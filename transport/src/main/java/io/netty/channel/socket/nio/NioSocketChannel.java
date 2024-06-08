@@ -37,7 +37,7 @@ import java.util.concurrent.Executor;
 import static io.netty.channel.internal.ChannelUtils.MAX_BYTES_PER_GATHERING_WRITE_ATTEMPTED_LOW_THRESHOLD;
 
 /**
- * 基于NIO模型的SocketChannel
+ * 基于NIO模型的SocketChannel：对应客户端连接Socket，当客户端完成三次握手后，由系统调用accept函数根据监听Socket创建。
  */
 public class NioSocketChannel extends AbstractNioByteChannel implements io.netty.channel.socket.SocketChannel {
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(NioSocketChannel.class);

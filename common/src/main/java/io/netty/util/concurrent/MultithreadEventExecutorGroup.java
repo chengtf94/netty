@@ -39,6 +39,8 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
         this(nThreads, threadFactory == null ? null : new ThreadPerTaskExecutor(threadFactory), args);
     }
     protected MultithreadEventExecutorGroup(int nThreads, Executor executor, Object... args) {
+        // EventExecutorChooserFactory：绑定策略，当客户端连接完成三次握手后，Main Reactor会创建客户端连接NioSocketChannel，
+        // 并将其绑定到Sub Reactor Group中的一个固定Reactor，那么具体要绑定到哪个具体的Sub Reactor上由绑定策略指定（算法为求模取余）
         this(nThreads, executor, DefaultEventExecutorChooserFactory.INSTANCE, args);
     }
     protected MultithreadEventExecutorGroup(int nThreads, Executor executor,
@@ -47,13 +49,12 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
             throw new IllegalArgumentException(String.format("nThreads: %d (expected: > 0)", nThreads));
         }
 
-        // executor：用于创建Reactor线程
+        // #1 创建ThreadPerTaskExecutor：用于创建Reactor线程，来一个任务就创建一个线程执行，而创建的这个线程正是Netty的核心引擎Reactor线程
         if (executor == null) {
-            // 来一个任务就创建一个线程执行，而创建的这个线程正是Netty的核心引擎Reactor线程
             executor = new ThreadPerTaskExecutor(newDefaultThreadFactory());
         }
 
-        // 迭代创建Reactor Group中的Reactor
+        // #2 循环创建NioEventLoop：也就是Reactor Group中的Reactor
         children = new EventExecutor[nThreads];
         for (int i = 0; i < nThreads; i++) {
             boolean success = false;
@@ -84,7 +85,7 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
             }
         }
 
-        // 创建Channel到Reactor的绑定策略
+        // #3 创建Channel到Reactor的绑定策略：也就是线程选择器，确定每次如何从NioEventLoopGroup中选择一个NioEventLoop
         chooser = chooserFactory.newChooser(children);
 
         // 创建Reactor关闭的回调函数terminationListener，在Reactor关闭时回调。

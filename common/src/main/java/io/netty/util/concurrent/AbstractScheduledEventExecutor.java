@@ -35,12 +35,22 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
 
     long nextTaskId;
 
+    /**
+     * 构造方法
+     */
     protected AbstractScheduledEventExecutor() {
     }
 
     protected AbstractScheduledEventExecutor(EventExecutorGroup parent) {
         super(parent);
     }
+
+
+
+
+
+
+
 
     protected static long nanoTime() {
         return ScheduledFutureTask.nanoTime();
@@ -273,14 +283,6 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
      * Called from arbitrary non-{@link EventExecutor} threads prior to scheduled task submission.
      * Returns {@code true} if the {@link EventExecutor} thread should be woken immediately to
      * process the scheduled task (if not already awake).
-     * <p>
-     * If {@code false} is returned, {@link #afterScheduledTaskSubmitted(long)} will be called with
-     * the same value <i>after</i> the scheduled task is enqueued, providing another opportunity
-     * to wake the {@link EventExecutor} thread if required.
-     *
-     * @param deadlineNanos deadline of the to-be-scheduled task
-     *     relative to {@link AbstractScheduledEventExecutor#nanoTime()}
-     * @return {@code true} if the {@link EventExecutor} thread should be woken, {@code false} otherwise
      */
     protected boolean beforeScheduledTaskSubmitted(long deadlineNanos) {
         return true;
@@ -288,9 +290,6 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
 
     /**
      * See {@link #beforeScheduledTaskSubmitted(long)}. Called only after that method returns false.
-     *
-     * @param deadlineNanos relative to {@link AbstractScheduledEventExecutor#nanoTime()}
-     * @return  {@code true} if the {@link EventExecutor} thread should be woken, {@code false} otherwise
      */
     protected boolean afterScheduledTaskSubmitted(long deadlineNanos) {
         return true;
