@@ -24,7 +24,7 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
      */
     private final EventExecutorChooserFactory.EventExecutorChooser chooser;
     /**
-     * 记录关闭的Reactor个数，当Reactor全部关闭后，才可以认为关闭成功
+     * 关闭的Reactor个数：当Reactor全部关闭后，才可以认为关闭成功
      */
     private final AtomicInteger terminatedChildren = new AtomicInteger();
     /**
@@ -88,18 +88,19 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
         // #3 创建Channel到Reactor的绑定策略：也就是线程选择器，确定每次如何从NioEventLoopGroup中选择一个NioEventLoop
         chooser = chooserFactory.newChooser(children);
 
-        // 创建Reactor关闭的回调函数terminationListener，在Reactor关闭时回调。
+        // #4 创建terminationListener：也就是Reactor关闭的回调函数，在Reactor关闭时回调
         final FutureListener<Object> terminationListener = new FutureListener<Object>() {
             @Override
             public void operationComplete(Future<Object> future) throws Exception {
+                // 当所有Reactor关闭后 才认为是关闭成功
                 if (terminatedChildren.incrementAndGet() == children.length) {
-                    // 当所有Reactor关闭后 才认为是关闭成功
                     terminationFuture.setSuccess(null);
                 }
             }
         };
+
+        // #5 为所有Reactor添加terminationListener
         for (EventExecutor e : children) {
-            // 为所有Reactor添加terminationListener
             e.terminationFuture().addListener(terminationListener);
         }
 

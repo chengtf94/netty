@@ -29,7 +29,7 @@ import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 /**
- * Abstract base class for {@link OrderedEventExecutor}'s that execute all its submitted tasks in a single thread.
+ * SingleThreadEventExecutor：负责对普通任务队列的管理、异步任务的执行、Reactor线程的启停。
  */
 public abstract class SingleThreadEventExecutor extends AbstractScheduledEventExecutor implements OrderedEventExecutor {
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(SingleThreadEventExecutor.class);
@@ -72,7 +72,10 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
      * 添加任务任务后是否唤醒Reactor线程
      */
     private final boolean addTaskWakesUp;
-
+    /**
+     * 关闭future
+     */
+    private final Promise<?> terminationFuture = new DefaultPromise<Void>(GlobalEventExecutor.INSTANCE);
 
     private volatile Thread thread;
     @SuppressWarnings("unused")
@@ -93,7 +96,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     private volatile long gracefulShutdownTimeout;
     private long gracefulShutdownStartTime;
 
-    private final Promise<?> terminationFuture = new DefaultPromise<Void>(GlobalEventExecutor.INSTANCE);
+
 
     /**
      * 构造方法
@@ -148,7 +151,10 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         this.addTaskWakesUp = addTaskWakesUp;
     }
 
-
+    @Override
+    public Future<?> terminationFuture() {
+        return terminationFuture;
+    }
 
 
 
@@ -643,10 +649,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         return terminationFuture();
     }
 
-    @Override
-    public Future<?> terminationFuture() {
-        return terminationFuture;
-    }
+
 
     @Override
     @Deprecated

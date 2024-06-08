@@ -12,7 +12,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadFactory;
 
 /**
- * Abstract base class for {@link EventLoop}s that execute all its submitted tasks in a single thread.
+ * SingleThreadEventLoop：负责对尾部任务队列tailTasks进行管理。并且提供Channel向Reactor注册的行为。
  */
 public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor implements EventLoop {
 

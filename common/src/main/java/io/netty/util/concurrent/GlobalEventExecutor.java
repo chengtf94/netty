@@ -32,6 +32,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
+ * GlobalEventExecutor：全局事件执行器
  * Single-thread singleton {@link EventExecutor}.  It starts the thread automatically and stops it when there is no
  * task pending in the task queue for 1 second.  Please note it is not scalable to schedule large number of tasks to
  * this executor; use a dedicated executor.
@@ -44,7 +45,7 @@ public final class GlobalEventExecutor extends AbstractScheduledEventExecutor im
 
     public static final GlobalEventExecutor INSTANCE = new GlobalEventExecutor();
 
-    final BlockingQueue<Runnable> taskQueue = new LinkedBlockingQueue<Runnable>();
+
     final ScheduledFutureTask<Void> quietPeriodTask = new ScheduledFutureTask<Void>(
             this, Executors.<Void>callable(new Runnable() {
         @Override
@@ -53,27 +54,129 @@ public final class GlobalEventExecutor extends AbstractScheduledEventExecutor im
         }
     }, null), ScheduledFutureTask.deadlineNanos(SCHEDULE_QUIET_PERIOD_INTERVAL), -SCHEDULE_QUIET_PERIOD_INTERVAL);
 
-    // because the GlobalEventExecutor is a singleton, tasks submitted to it can come from arbitrary threads and this
-    // can trigger the creation of a thread from arbitrary thread groups; for this reason, the thread factory must not
-    // be sticky about its thread group
-    // visible for testing
+    /**
+     * 线程工厂
+     */
     final ThreadFactory threadFactory;
+    /**
+     * 任务队列
+     */
+    final BlockingQueue<Runnable> taskQueue = new LinkedBlockingQueue<Runnable>();
+    /**
+     * 线程任务
+     */
     private final TaskRunner taskRunner = new TaskRunner();
     private final AtomicBoolean started = new AtomicBoolean();
     volatile Thread thread;
 
     private final Future<?> terminationFuture = new FailedFuture<Object>(this, new UnsupportedOperationException());
 
+    /**
+     * 构造方法
+     */
     private GlobalEventExecutor() {
         scheduledTaskQueue().add(quietPeriodTask);
         threadFactory = ThreadExecutorMap.apply(new DefaultThreadFactory(
                 DefaultThreadFactory.toPoolName(getClass()), false, Thread.NORM_PRIORITY, null), this);
     }
 
+    @Override
+    public void execute(Runnable task) {
+        addTask(ObjectUtil.checkNotNull(task, "task"));
+        if (!inEventLoop()) {
+            startThread();
+        }
+    }
+
     /**
-     * Take the next {@link Runnable} from the task queue and so will block if no task is currently present.
-     *
-     * @return {@code null} if the executor thread has been interrupted or waken up.
+     * 添加任务
+     */
+    private void addTask(Runnable task) {
+        taskQueue.add(ObjectUtil.checkNotNull(task, "task"));
+    }
+
+    /**
+     * 启动线程，并执行任务
+     */
+    private void startThread() {
+        if (started.compareAndSet(false, true)) {
+            final Thread t = threadFactory.newThread(taskRunner);
+            // Set to null to ensure we not create classloader leaks by holds a strong reference to the inherited
+            // classloader.
+            // See:
+            // - https://github.com/netty/netty/issues/7290
+            // - https://bugs.openjdk.java.net/browse/JDK-7008595
+            AccessController.doPrivileged(new PrivilegedAction<Void>() {
+                @Override
+                public Void run() {
+                    t.setContextClassLoader(null);
+                    return null;
+                }
+            });
+
+            // Set the thread before starting it as otherwise inEventLoop() may return false and so produce
+            // an assert error.
+            // See https://github.com/netty/netty/issues/4357
+            thread = t;
+            t.start();
+        }
+    }
+
+    /**
+     * 线程任务
+     */
+    final class TaskRunner implements Runnable {
+        @Override
+        public void run() {
+            for (;;) {
+                Runnable task = takeTask();
+                if (task != null) {
+                    try {
+                        task.run();
+                    } catch (Throwable t) {
+                        logger.warn("Unexpected exception from the global event executor: ", t);
+                    }
+
+                    if (task != quietPeriodTask) {
+                        continue;
+                    }
+                }
+
+                Queue<ScheduledFutureTask<?>> scheduledTaskQueue = GlobalEventExecutor.this.scheduledTaskQueue;
+                // Terminate if there is no task in the queue (except the noop task).
+                if (taskQueue.isEmpty() && (scheduledTaskQueue == null || scheduledTaskQueue.size() == 1)) {
+                    // Mark the current thread as stopped.
+                    // The following CAS must always success and must be uncontended,
+                    // because only one thread should be running at the same time.
+                    boolean stopped = started.compareAndSet(true, false);
+                    assert stopped;
+
+                    // Check if there are pending entries added by execute() or schedule*() while we do CAS above.
+                    if (taskQueue.isEmpty() && (scheduledTaskQueue == null || scheduledTaskQueue.size() == 1)) {
+                        // A) No new task was added and thus there's nothing to handle
+                        //    -> safe to terminate because there's nothing left to do
+                        // B) A new thread started and handled all the new tasks.
+                        //    -> safe to terminate the new thread will take care the rest
+                        break;
+                    }
+
+                    // There are pending tasks added again.
+                    if (!started.compareAndSet(false, true)) {
+                        // startThread() started a new thread and set 'started' to true.
+                        // -> terminate this thread so that the new thread reads from taskQueue exclusively.
+                        break;
+                    }
+
+                    // New tasks were added, but this worker was faster to set 'started' to true.
+                    // i.e. a new worker thread was not started by startThread().
+                    // -> keep this thread alive to handle the newly added entries.
+                }
+            }
+        }
+    }
+
+    /**
+     * 获取待执行任务
      */
     Runnable takeTask() {
         BlockingQueue<Runnable> taskQueue = this.taskQueue;
@@ -123,22 +226,8 @@ public final class GlobalEventExecutor extends AbstractScheduledEventExecutor im
         }
     }
 
-    /**
-     * Return the number of tasks that are pending for processing.
-     *
-     * <strong>Be aware that this operation may be expensive as it depends on the internal implementation of the
-     * SingleThreadEventExecutor. So use it was care!</strong>
-     */
     public int pendingTasks() {
         return taskQueue.size();
-    }
-
-    /**
-     * Add a task to the task queue, or throws a {@link RejectedExecutionException} if this instance was shutdown
-     * before.
-     */
-    private void addTask(Runnable task) {
-        taskQueue.add(ObjectUtil.checkNotNull(task, "task"));
     }
 
     @Override
@@ -201,85 +290,4 @@ public final class GlobalEventExecutor extends AbstractScheduledEventExecutor im
         return !thread.isAlive();
     }
 
-    @Override
-    public void execute(Runnable task) {
-        addTask(ObjectUtil.checkNotNull(task, "task"));
-        if (!inEventLoop()) {
-            startThread();
-        }
-    }
-
-    private void startThread() {
-        if (started.compareAndSet(false, true)) {
-            final Thread t = threadFactory.newThread(taskRunner);
-            // Set to null to ensure we not create classloader leaks by holds a strong reference to the inherited
-            // classloader.
-            // See:
-            // - https://github.com/netty/netty/issues/7290
-            // - https://bugs.openjdk.java.net/browse/JDK-7008595
-            AccessController.doPrivileged(new PrivilegedAction<Void>() {
-                @Override
-                public Void run() {
-                    t.setContextClassLoader(null);
-                    return null;
-                }
-            });
-
-            // Set the thread before starting it as otherwise inEventLoop() may return false and so produce
-            // an assert error.
-            // See https://github.com/netty/netty/issues/4357
-            thread = t;
-            t.start();
-        }
-    }
-
-    final class TaskRunner implements Runnable {
-        @Override
-        public void run() {
-            for (;;) {
-                Runnable task = takeTask();
-                if (task != null) {
-                    try {
-                        task.run();
-                    } catch (Throwable t) {
-                        logger.warn("Unexpected exception from the global event executor: ", t);
-                    }
-
-                    if (task != quietPeriodTask) {
-                        continue;
-                    }
-                }
-
-                Queue<ScheduledFutureTask<?>> scheduledTaskQueue = GlobalEventExecutor.this.scheduledTaskQueue;
-                // Terminate if there is no task in the queue (except the noop task).
-                if (taskQueue.isEmpty() && (scheduledTaskQueue == null || scheduledTaskQueue.size() == 1)) {
-                    // Mark the current thread as stopped.
-                    // The following CAS must always success and must be uncontended,
-                    // because only one thread should be running at the same time.
-                    boolean stopped = started.compareAndSet(true, false);
-                    assert stopped;
-
-                    // Check if there are pending entries added by execute() or schedule*() while we do CAS above.
-                    if (taskQueue.isEmpty() && (scheduledTaskQueue == null || scheduledTaskQueue.size() == 1)) {
-                        // A) No new task was added and thus there's nothing to handle
-                        //    -> safe to terminate because there's nothing left to do
-                        // B) A new thread started and handled all the new tasks.
-                        //    -> safe to terminate the new thread will take care the rest
-                        break;
-                    }
-
-                    // There are pending tasks added again.
-                    if (!started.compareAndSet(false, true)) {
-                        // startThread() started a new thread and set 'started' to true.
-                        // -> terminate this thread so that the new thread reads from taskQueue exclusively.
-                        break;
-                    }
-
-                    // New tasks were added, but this worker was faster to set 'started' to true.
-                    // i.e. a new worker thread was not started by startThread().
-                    // -> keep this thread alive to handle the newly added entries.
-                }
-            }
-        }
-    }
 }
