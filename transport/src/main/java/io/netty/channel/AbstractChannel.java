@@ -41,16 +41,17 @@ import java.util.concurrent.RejectedExecutionException;
  * A skeletal {@link Channel} implementation.
  */
 public abstract class AbstractChannel extends DefaultAttributeMap implements Channel {
-
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(AbstractChannel.class);
 
+    /**
+     * 父Channel、
+     */
     private final Channel parent;
     private final ChannelId id;
     private final Unsafe unsafe;
     private final DefaultChannelPipeline pipeline;
     private final VoidChannelPromise unsafeVoidPromise = new VoidChannelPromise(this, false);
     private final CloseFuture closeFuture = new CloseFuture(this);
-
     private volatile SocketAddress localAddress;
     private volatile SocketAddress remoteAddress;
     private volatile EventLoop eventLoop;
@@ -63,10 +64,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
     private String strVal;
 
     /**
-     * Creates a new instance.
-     *
-     * @param parent
-     *        the parent of this channel. {@code null} if there's no parent.
+     * 构造方法
      */
     protected AbstractChannel(Channel parent) {
         this.parent = parent;
@@ -74,38 +72,29 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         unsafe = newUnsafe();
         pipeline = newChannelPipeline();
     }
-
-    /**
-     * Creates a new instance.
-     *
-     * @param parent
-     *        the parent of this channel. {@code null} if there's no parent.
-     */
     protected AbstractChannel(Channel parent, ChannelId id) {
         this.parent = parent;
         this.id = id;
         unsafe = newUnsafe();
         pipeline = newChannelPipeline();
     }
+    protected ChannelId newId() {
+        return DefaultChannelId.newInstance();
+    }
+    protected abstract AbstractUnsafe newUnsafe();
+    protected DefaultChannelPipeline newChannelPipeline() {
+        return new DefaultChannelPipeline(this);
+    }
+
+
+
+
+
+
 
     @Override
     public final ChannelId id() {
         return id;
-    }
-
-    /**
-     * Returns a new {@link DefaultChannelId} instance. Subclasses may override this method to assign custom
-     * {@link ChannelId}s to {@link Channel}s that use the {@link AbstractChannel#AbstractChannel(Channel)} constructor.
-     */
-    protected ChannelId newId() {
-        return DefaultChannelId.newInstance();
-    }
-
-    /**
-     * Returns a new {@link DefaultChannelPipeline} instance.
-     */
-    protected DefaultChannelPipeline newChannelPipeline() {
-        return new DefaultChannelPipeline(this);
     }
 
     @Override
@@ -329,10 +318,6 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         return unsafe;
     }
 
-    /**
-     * Create a new {@link AbstractUnsafe} instance which will be used for the life-time of the {@link Channel}
-     */
-    protected abstract AbstractUnsafe newUnsafe();
 
     /**
      * Returns the ID of this channel.

@@ -33,33 +33,16 @@ public final class ServerBootstrapConfig extends AbstractBootstrapConfig<ServerB
         super(bootstrap);
     }
 
-    /**
-     * Returns the configured {@link EventLoopGroup} which will be used for the child channels or {@code null}
-     * if non is configured yet.
-     */
     @SuppressWarnings("deprecation")
     public EventLoopGroup childGroup() {
         return bootstrap.childGroup();
     }
-
-    /**
-     * Returns the configured {@link ChannelHandler} be used for the child channels or {@code null}
-     * if non is configured yet.
-     */
     public ChannelHandler childHandler() {
         return bootstrap.childHandler();
     }
-
-    /**
-     * Returns a copy of the configured options which will be used for the child channels.
-     */
     public Map<ChannelOption<?>, Object> childOptions() {
         return bootstrap.childOptions();
     }
-
-    /**
-     * Returns a copy of the configured attributes which will be used for the child channels.
-     */
     public Map<AttributeKey<?>, Object> childAttrs() {
         return bootstrap.childAttrs();
     }
@@ -102,4 +85,5 @@ public final class ServerBootstrapConfig extends AbstractBootstrapConfig<ServerB
 
         return buf.toString();
     }
+
 }

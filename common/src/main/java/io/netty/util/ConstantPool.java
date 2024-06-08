@@ -23,19 +23,24 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * A pool of {@link Constant}s.
+ * 常量池
  *
- * @param <T> the type of the constant
  */
 public abstract class ConstantPool<T extends Constant<T>> {
 
+    /**
+     * 常量Map、常量ID生成器
+     */
     private final ConcurrentMap<String, T> constants = PlatformDependent.newConcurrentHashMap();
-
     private final AtomicInteger nextId = new AtomicInteger(1);
 
     /**
-     * Shortcut of {@link #valueOf(String) valueOf(firstNameComponent.getName() + "#" + secondNameComponent)}.
+     * Returns the {@link Constant} which is assigned to the specified {@code name}.
      */
+    public T valueOf(String name) {
+        checkNotNullAndNotEmpty(name);
+        return getOrCreate(name);
+    }
     public T valueOf(Class<?> firstNameComponent, String secondNameComponent) {
         return valueOf(
                 ObjectUtil.checkNotNull(firstNameComponent, "firstNameComponent").getName() +
@@ -44,22 +49,7 @@ public abstract class ConstantPool<T extends Constant<T>> {
     }
 
     /**
-     * Returns the {@link Constant} which is assigned to the specified {@code name}.
-     * If there's no such {@link Constant}, a new one will be created and returned.
-     * Once created, the subsequent calls with the same {@code name} will always return the previously created one
-     * (i.e. singleton.)
-     *
-     * @param name the name of the {@link Constant}
-     */
-    public T valueOf(String name) {
-        checkNotNullAndNotEmpty(name);
-        return getOrCreate(name);
-    }
-
-    /**
      * Get existing constant by name or creates new one if not exists. Threadsafe
-     *
-     * @param name the name of the {@link Constant}
      */
     private T getOrCreate(String name) {
         T constant = constants.get(name);
@@ -93,8 +83,6 @@ public abstract class ConstantPool<T extends Constant<T>> {
 
     /**
      * Creates constant by name or throws exception. Threadsafe
-     *
-     * @param name the name of the {@link Constant}
      */
     private T createOrThrow(String name) {
         T constant = constants.get(name);

@@ -23,6 +23,8 @@ import static java.lang.Math.max;
 import static java.lang.Math.min;
 
 /**
+ * AdaptiveRecvByteBufAllocator：Channel接收数据用的Buffer分配器
+ *
  * The {@link RecvByteBufAllocator} that automatically increases and
  * decreases the predicted buffer size on feed back.
  * <p>
@@ -34,38 +36,61 @@ import static java.lang.Math.min;
  */
 public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufAllocator {
 
-    static final int DEFAULT_MINIMUM = 64;
-    // Use an initial value that is bigger than the common MTU of 1500
-    static final int DEFAULT_INITIAL = 2048;
-    static final int DEFAULT_MAXIMUM = 65536;
-
-    private static final int INDEX_INCREMENT = 4;
-    private static final int INDEX_DECREMENT = 1;
-
     private static final int[] SIZE_TABLE;
-
     static {
         List<Integer> sizeTable = new ArrayList<Integer>();
         for (int i = 16; i < 512; i += 16) {
             sizeTable.add(i);
         }
-
         // Suppress a warning since i becomes negative when an integer overflow happens
         for (int i = 512; i > 0; i <<= 1) { // lgtm[java/constant-comparison]
             sizeTable.add(i);
         }
-
         SIZE_TABLE = new int[sizeTable.size()];
         for (int i = 0; i < SIZE_TABLE.length; i ++) {
             SIZE_TABLE[i] = sizeTable.get(i);
         }
     }
 
+    private final int minIndex;
+    private final int maxIndex;
+    private final int initial;
+
     /**
-     * @deprecated There is state for {@link #maxMessagesPerRead()} which is typically based upon channel type.
+     * 构造方法
      */
-    @Deprecated
-    public static final AdaptiveRecvByteBufAllocator DEFAULT = new AdaptiveRecvByteBufAllocator();
+    public AdaptiveRecvByteBufAllocator() {
+        this(DEFAULT_MINIMUM, DEFAULT_INITIAL, DEFAULT_MAXIMUM);
+    }
+    static final int DEFAULT_MINIMUM = 64;
+    // Use an initial value that is bigger than the common MTU of 1500
+    static final int DEFAULT_INITIAL = 2048;
+    static final int DEFAULT_MAXIMUM = 65536;
+    public AdaptiveRecvByteBufAllocator(int minimum, int initial, int maximum) {
+        checkPositive(minimum, "minimum");
+        if (initial < minimum) {
+            throw new IllegalArgumentException("initial: " + initial);
+        }
+        if (maximum < initial) {
+            throw new IllegalArgumentException("maximum: " + maximum);
+        }
+
+        int minIndex = getSizeTableIndex(minimum);
+        if (SIZE_TABLE[minIndex] < minimum) {
+            this.minIndex = minIndex + 1;
+        } else {
+            this.minIndex = minIndex;
+        }
+
+        int maxIndex = getSizeTableIndex(maximum);
+        if (SIZE_TABLE[maxIndex] > maximum) {
+            this.maxIndex = maxIndex - 1;
+        } else {
+            this.maxIndex = maxIndex;
+        }
+
+        this.initial = initial;
+    }
 
     private static int getSizeTableIndex(final int size) {
         for (int low = 0, high = SIZE_TABLE.length - 1;;) {
@@ -90,6 +115,19 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
             }
         }
     }
+
+
+
+
+
+
+
+
+    private static final int INDEX_INCREMENT = 4;
+    private static final int INDEX_DECREMENT = 1;
+
+    @Deprecated
+    public static final AdaptiveRecvByteBufAllocator DEFAULT = new AdaptiveRecvByteBufAllocator();
 
     private final class HandleImpl extends MaxMessageHandle {
         private final int minIndex;
@@ -145,51 +183,6 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
         }
     }
 
-    private final int minIndex;
-    private final int maxIndex;
-    private final int initial;
-
-    /**
-     * Creates a new predictor with the default parameters.  With the default
-     * parameters, the expected buffer size starts from {@code 1024}, does not
-     * go down below {@code 64}, and does not go up above {@code 65536}.
-     */
-    public AdaptiveRecvByteBufAllocator() {
-        this(DEFAULT_MINIMUM, DEFAULT_INITIAL, DEFAULT_MAXIMUM);
-    }
-
-    /**
-     * Creates a new predictor with the specified parameters.
-     *
-     * @param minimum  the inclusive lower bound of the expected buffer size
-     * @param initial  the initial buffer size when no feed back was received
-     * @param maximum  the inclusive upper bound of the expected buffer size
-     */
-    public AdaptiveRecvByteBufAllocator(int minimum, int initial, int maximum) {
-        checkPositive(minimum, "minimum");
-        if (initial < minimum) {
-            throw new IllegalArgumentException("initial: " + initial);
-        }
-        if (maximum < initial) {
-            throw new IllegalArgumentException("maximum: " + maximum);
-        }
-
-        int minIndex = getSizeTableIndex(minimum);
-        if (SIZE_TABLE[minIndex] < minimum) {
-            this.minIndex = minIndex + 1;
-        } else {
-            this.minIndex = minIndex;
-        }
-
-        int maxIndex = getSizeTableIndex(maximum);
-        if (SIZE_TABLE[maxIndex] > maximum) {
-            this.maxIndex = maxIndex - 1;
-        } else {
-            this.maxIndex = maxIndex;
-        }
-
-        this.initial = initial;
-    }
 
     @SuppressWarnings("deprecation")
     @Override
