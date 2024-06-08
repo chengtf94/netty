@@ -26,38 +26,51 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * A special {@link ChannelInboundHandler} which offers an easy way to initialize a {@link Channel} once it was
- * registered to its {@link EventLoop}.
- *
- * Implementations are most often used in the context of {@link Bootstrap#handler(ChannelHandler)} ,
- * {@link ServerBootstrap#handler(ChannelHandler)} and {@link ServerBootstrap#childHandler(ChannelHandler)} to
- * setup the {@link ChannelPipeline} of a {@link Channel}.
- *
- * <pre>
- *
- * public class MyChannelInitializer extends {@link ChannelInitializer} {
- *     public void initChannel({@link Channel} channel) {
- *         channel.pipeline().addLast("myHandler", new MyHandler());
- *     }
- * }
- *
- * {@link ServerBootstrap} bootstrap = ...;
- * ...
- * bootstrap.childHandler(new MyChannelInitializer());
- * ...
- * </pre>
- * Be aware that this class is marked as {@link Sharable} and so the implementation must be safe to be re-used.
- *
- * @param <C>   A sub-type of {@link Channel}
+ * ChannelInitializer：一种特殊的ChannelInboundHandler，
  */
 @Sharable
 public abstract class ChannelInitializer<C extends Channel> extends ChannelInboundHandlerAdapter {
-
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(ChannelInitializer.class);
-    // We use a Set as a ChannelInitializer is usually shared between all Channels in a Bootstrap /
-    // ServerBootstrap. This way we can reduce the memory usage compared to use Attributes.
+
+    /**
+     * We use a Set as a ChannelInitializer is usually shared between all Channels in a Bootstrap /
+     * ServerBootstrap. This way we can reduce the memory usage compared to use Attributes.
+     */
     private final Set<ChannelHandlerContext> initMap = Collections.newSetFromMap(
             new ConcurrentHashMap<ChannelHandlerContext, Boolean>());
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public final void channelRegistered(ChannelHandlerContext ctx) throws Exception {
+        // 当channelRegister事件发生时，调用initChannel初始化pipeline
+        if (initChannel(ctx)) {
+            ctx.pipeline().fireChannelRegistered();
+            removeState(ctx);
+        } else {
+            // Called initChannel(...) before which is the expected behavior, so just forward the event.
+            ctx.fireChannelRegistered();
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private boolean initChannel(ChannelHandlerContext ctx) throws Exception {
+        if (initMap.add(ctx)) { // Guard against re-entrance.
+            try {
+                // 此时客户单NioSocketChannel已经创建并初始化好了
+                initChannel((C) ctx.channel());
+            } catch (Throwable cause) {
+                exceptionCaught(ctx, cause);
+            } finally {
+                // 处理完成后移除自身
+                ChannelPipeline pipeline = ctx.pipeline();
+                if (pipeline.context(this) != null) {
+                    pipeline.remove(this);
+                }
+            }
+            return true;
+        }
+        return false;
+    }
 
     /**
      * This method will be called once the {@link Channel} was registered. After the method returns this instance
@@ -70,27 +83,28 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
      */
     protected abstract void initChannel(C ch) throws Exception;
 
-    @Override
-    @SuppressWarnings("unchecked")
-    public final void channelRegistered(ChannelHandlerContext ctx) throws Exception {
-        // Normally this method will never be called as handlerAdded(...) should call initChannel(...) and remove
-        // the handler.
-        if (initChannel(ctx)) {
-            // we called initChannel(...) so we need to call now pipeline.fireChannelRegistered() to ensure we not
-            // miss an event.
-            ctx.pipeline().fireChannelRegistered();
-
-            // We are done with init the Channel, removing all the state for the Channel now.
-            removeState(ctx);
+    private void removeState(final ChannelHandlerContext ctx) {
+        // The removal may happen in an async fashion if the EventExecutor we use does something funky.
+        if (ctx.isRemoved()) {
+            initMap.remove(ctx);
         } else {
-            // Called initChannel(...) before which is the expected behavior, so just forward the event.
-            ctx.fireChannelRegistered();
+            // The context is not removed yet which is most likely the case because a custom EventExecutor is used.
+            // Let's schedule it on the EventExecutor to give it some more time to be completed in case it is offloaded.
+            ctx.executor().execute(new Runnable() {
+                @Override
+                public void run() {
+                    initMap.remove(ctx);
+                }
+            });
         }
     }
 
-    /**
-     * Handle the {@link Throwable} by logging and closing the {@link Channel}. Sub-classes may override this.
-     */
+
+
+
+
+
+
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
         if (logger.isWarnEnabled()) {
@@ -122,39 +136,4 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
         initMap.remove(ctx);
     }
 
-    @SuppressWarnings("unchecked")
-    private boolean initChannel(ChannelHandlerContext ctx) throws Exception {
-        if (initMap.add(ctx)) { // Guard against re-entrance.
-            try {
-                initChannel((C) ctx.channel());
-            } catch (Throwable cause) {
-                // Explicitly call exceptionCaught(...) as we removed the handler before calling initChannel(...).
-                // We do so to prevent multiple calls to initChannel(...).
-                exceptionCaught(ctx, cause);
-            } finally {
-                ChannelPipeline pipeline = ctx.pipeline();
-                if (pipeline.context(this) != null) {
-                    pipeline.remove(this);
-                }
-            }
-            return true;
-        }
-        return false;
-    }
-
-    private void removeState(final ChannelHandlerContext ctx) {
-        // The removal may happen in an async fashion if the EventExecutor we use does something funky.
-        if (ctx.isRemoved()) {
-            initMap.remove(ctx);
-        } else {
-            // The context is not removed yet which is most likely the case because a custom EventExecutor is used.
-            // Let's schedule it on the EventExecutor to give it some more time to be completed in case it is offloaded.
-            ctx.executor().execute(new Runnable() {
-                @Override
-                public void run() {
-                    initMap.remove(ctx);
-                }
-            });
-        }
-    }
 }

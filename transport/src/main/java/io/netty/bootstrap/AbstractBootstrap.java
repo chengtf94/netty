@@ -44,31 +44,41 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * {@link AbstractBootstrap} is a helper class that makes it easy to bootstrap a {@link Channel}. It support
- * method-chaining to provide an easy way to configure the {@link AbstractBootstrap}.
- *
- * <p>When not used in a {@link ServerBootstrap} context, the {@link #bind()} methods are useful for connectionless
- * transports such as datagram (UDP).</p>
+ * AbstractBootstrap：负责对主Reactor线程组相关的配置进行管理，以及主Reactor线程组中的Main Reactor负责处理的服务端ServerSocketChannel相关的配置管理。
  */
 public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C extends Channel> implements Cloneable {
+
+    /**
+     * 主Reactor线程组
+     */
+    volatile EventLoopGroup group;
+    /**
+     * Channel工厂：默认是ReflectiveChannelFactory，基于反射创建NioServerSocketChannel
+     */
+    @SuppressWarnings("deprecation")
+    private volatile ChannelFactory<? extends C> channelFactory;
+    /**
+     * ServerSocketChannel中的ChannelOption配置
+     */
+    private final Map<ChannelOption<?>, Object> options = new LinkedHashMap<ChannelOption<?>, Object>();
+    /**
+     * ServerSocketChannel中的AttributeKey配置
+     */
+    private final Map<AttributeKey<?>, Object> attrs = new ConcurrentHashMap<AttributeKey<?>, Object>();
+    /**
+     * ServerSocketChannel中pipeline里的handler：主要是ServerBootstrapAcceptor，注意不要添加过多，并且不能再ChannelHandler中执行耗时的业务处理任务。
+     */
+    private volatile ChannelHandler handler;
+    private volatile SocketAddress localAddress;
     @SuppressWarnings("unchecked")
     static final Map.Entry<ChannelOption<?>, Object>[] EMPTY_OPTION_ARRAY = new Map.Entry[0];
     @SuppressWarnings("unchecked")
     static final Map.Entry<AttributeKey<?>, Object>[] EMPTY_ATTRIBUTE_ARRAY = new Map.Entry[0];
 
-    volatile EventLoopGroup group;
-    @SuppressWarnings("deprecation")
-    private volatile ChannelFactory<? extends C> channelFactory;
-    private volatile SocketAddress localAddress;
-
-    // The order in which ChannelOptions are applied is important they may depend on each other for validation
-    // purposes.
-    private final Map<ChannelOption<?>, Object> options = new LinkedHashMap<ChannelOption<?>, Object>();
-    private final Map<AttributeKey<?>, Object> attrs = new ConcurrentHashMap<AttributeKey<?>, Object>();
-    private volatile ChannelHandler handler;
-
+    /**
+     * 构造方法
+     */
     AbstractBootstrap() {
-        // Disallow extending from a different package.
     }
 
     AbstractBootstrap(AbstractBootstrap<B, C> bootstrap) {
@@ -83,8 +93,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     /**
-     * The {@link EventLoopGroup} which is used to handle all the events for the to-be-created
-     * {@link Channel}
+     * 设置主Reactor线程组
      */
     public B group(EventLoopGroup group) {
         ObjectUtil.checkNotNull(group, "group");
@@ -101,9 +110,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     /**
-     * The {@link Class} which is used to create {@link Channel} instances from.
-     * You either use this or {@link #channelFactory(io.netty.channel.ChannelFactory)} if your
-     * {@link Channel} implementation has no no-args constructor.
+     * 设置主Reactor中的channel类型：例如NioServerSocketChannel
      */
     public B channel(Class<? extends C> channelClass) {
         return channelFactory(new ReflectiveChannelFactory<C>(
@@ -111,31 +118,162 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         ));
     }
 
-    /**
-     * @deprecated Use {@link #channelFactory(io.netty.channel.ChannelFactory)} instead.
-     */
+    @SuppressWarnings({ "unchecked", "deprecation" })
+    public B channelFactory(io.netty.channel.ChannelFactory<? extends C> channelFactory) {
+        return channelFactory((ChannelFactory<C>) channelFactory);
+    }
+
     @Deprecated
     public B channelFactory(ChannelFactory<? extends C> channelFactory) {
         ObjectUtil.checkNotNull(channelFactory, "channelFactory");
         if (this.channelFactory != null) {
             throw new IllegalStateException("channelFactory set already");
         }
-
         this.channelFactory = channelFactory;
         return self();
     }
 
     /**
-     * {@link io.netty.channel.ChannelFactory} which is used to create {@link Channel} instances from
-     * when calling {@link #bind()}. This method is usually only used if {@link #channel(Class)}
-     * is not working for you because of some more complex needs. If your {@link Channel} implementation
-     * has a no-args constructor, its highly recommend to just use {@link #channel(Class)} to
-     * simplify your code.
+     * 设置主Reactor中的channel的option选项
      */
-    @SuppressWarnings({ "unchecked", "deprecation" })
-    public B channelFactory(io.netty.channel.ChannelFactory<? extends C> channelFactory) {
-        return channelFactory((ChannelFactory<C>) channelFactory);
+    public <T> B option(ChannelOption<T> option, T value) {
+        ObjectUtil.checkNotNull(option, "option");
+        synchronized (options) {
+            if (value == null) {
+                options.remove(option);
+            } else {
+                options.put(option, value);
+            }
+        }
+        return self();
     }
+
+    /**
+     * 设置主Reactor中的channel的attr选项
+     */
+    public <T> B attr(AttributeKey<T> key, T value) {
+        ObjectUtil.checkNotNull(key, "key");
+        if (value == null) {
+            attrs.remove(key);
+        } else {
+            attrs.put(key, value);
+        }
+        return self();
+    }
+
+    /**
+     * 设置主Reactor中的Channel->pipeline->handler
+     * 在实际项目使用的过程中，很少会添加额外的ChannelHandler，NioServerSocketChannel只需要专心做好自己最重要的本职工作接收客户端连接就好了。
+     */
+    public B handler(ChannelHandler handler) {
+        this.handler = ObjectUtil.checkNotNull(handler, "handler");
+        return self();
+    }
+
+    /**
+     * 创建ServerSocketChannel并绑定端口
+     */
+    public ChannelFuture bind(int inetPort) {
+        return bind(new InetSocketAddress(inetPort));
+    }
+
+    public ChannelFuture bind() {
+        validate();
+        SocketAddress localAddress = this.localAddress;
+        if (localAddress == null) {
+            throw new IllegalStateException("localAddress not set");
+        }
+        return doBind(localAddress);
+    }
+
+    public ChannelFuture bind(String inetHost, int inetPort) {
+        return bind(SocketUtils.socketAddress(inetHost, inetPort));
+    }
+
+    public ChannelFuture bind(InetAddress inetHost, int inetPort) {
+        return bind(new InetSocketAddress(inetHost, inetPort));
+    }
+
+    public ChannelFuture bind(SocketAddress localAddress) {
+        validate();
+        return doBind(ObjectUtil.checkNotNull(localAddress, "localAddress"));
+    }
+
+    /**
+     * 校验Netty核心组件是否配置齐全
+     */
+    public B validate() {
+        if (group == null) {
+            throw new IllegalStateException("group not set");
+        }
+        if (channelFactory == null) {
+            throw new IllegalStateException("channel or channelFactory not set");
+        }
+        return self();
+    }
+
+    /**
+     * 执行创建ServerSocketChannel并绑定端口：服务端开始启动，绑定端口地址，接收客户端连接
+     */
+    private ChannelFuture doBind(final SocketAddress localAddress) {
+        // 异步创建、初始化、注册ServerSocketChannel到主Reactor上
+        final ChannelFuture regFuture = initAndRegister();
+        final Channel channel = regFuture.channel();
+        if (regFuture.cause() != null) {
+            return regFuture;
+        }
+        if (regFuture.isDone()) {
+            // ServerSocketChannel向主Reactor注册成功后开始绑定端口
+            ChannelPromise promise = channel.newPromise();
+            doBind0(regFuture, channel, localAddress, promise);
+            return promise;
+        } else {
+            // 若此时注册操作没有完成，则向regFuture添加operationComplete回调函数，注册成功后回调。
+            final PendingRegistrationPromise promise = new PendingRegistrationPromise(channel);
+            regFuture.addListener(new ChannelFutureListener() {
+                @Override
+                public void operationComplete(ChannelFuture future) throws Exception {
+                    Throwable cause = future.cause();
+                    if (cause != null) {
+                        // Registration on the EventLoop failed so fail the ChannelPromise directly to not cause an
+                        // IllegalStateException once we try to access the EventLoop of the Channel.
+                        promise.setFailure(cause);
+                    } else {
+                        // Registration was successful, so set the correct executor to use.
+                        // See https://github.com/netty/netty/issues/2586
+                        promise.registered();
+                        doBind0(regFuture, channel, localAddress, promise);
+                    }
+                }
+            });
+            return promise;
+        }
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     /**
      * The {@link SocketAddress} which is used to bind the local "end" to.
@@ -166,49 +304,8 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         return localAddress(new InetSocketAddress(inetHost, inetPort));
     }
 
-    /**
-     * Allow to specify a {@link ChannelOption} which is used for the {@link Channel} instances once they got
-     * created. Use a value of {@code null} to remove a previous set {@link ChannelOption}.
-     */
-    public <T> B option(ChannelOption<T> option, T value) {
-        ObjectUtil.checkNotNull(option, "option");
-        synchronized (options) {
-            if (value == null) {
-                options.remove(option);
-            } else {
-                options.put(option, value);
-            }
-        }
-        return self();
-    }
 
-    /**
-     * Allow to specify an initial attribute of the newly created {@link Channel}.  If the {@code value} is
-     * {@code null}, the attribute of the specified {@code key} is removed.
-     */
-    public <T> B attr(AttributeKey<T> key, T value) {
-        ObjectUtil.checkNotNull(key, "key");
-        if (value == null) {
-            attrs.remove(key);
-        } else {
-            attrs.put(key, value);
-        }
-        return self();
-    }
 
-    /**
-     * Validate all the parameters. Sub-classes may override this, but should
-     * call the super method in that case.
-     */
-    public B validate() {
-        if (group == null) {
-            throw new IllegalStateException("group not set");
-        }
-        if (channelFactory == null) {
-            throw new IllegalStateException("channel or channelFactory not set");
-        }
-        return self();
-    }
 
     /**
      * Returns a deep clone of this bootstrap which has the identical configuration.  This method is useful when making
@@ -227,82 +324,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         return initAndRegister();
     }
 
-    /**
-     * Create a new {@link Channel} and bind it.
-     */
-    public ChannelFuture bind() {
-        validate();
-        SocketAddress localAddress = this.localAddress;
-        if (localAddress == null) {
-            throw new IllegalStateException("localAddress not set");
-        }
-        return doBind(localAddress);
-    }
 
-    /**
-     * Create a new {@link Channel} and bind it.
-     */
-    public ChannelFuture bind(int inetPort) {
-        return bind(new InetSocketAddress(inetPort));
-    }
-
-    /**
-     * Create a new {@link Channel} and bind it.
-     */
-    public ChannelFuture bind(String inetHost, int inetPort) {
-        return bind(SocketUtils.socketAddress(inetHost, inetPort));
-    }
-
-    /**
-     * Create a new {@link Channel} and bind it.
-     */
-    public ChannelFuture bind(InetAddress inetHost, int inetPort) {
-        return bind(new InetSocketAddress(inetHost, inetPort));
-    }
-
-    /**
-     * Create a new {@link Channel} and bind it.
-     */
-    public ChannelFuture bind(SocketAddress localAddress) {
-        validate();
-        return doBind(ObjectUtil.checkNotNull(localAddress, "localAddress"));
-    }
-
-    private ChannelFuture doBind(final SocketAddress localAddress) {
-        final ChannelFuture regFuture = initAndRegister();
-        final Channel channel = regFuture.channel();
-        if (regFuture.cause() != null) {
-            return regFuture;
-        }
-
-        if (regFuture.isDone()) {
-            // At this point we know that the registration was complete and successful.
-            ChannelPromise promise = channel.newPromise();
-            doBind0(regFuture, channel, localAddress, promise);
-            return promise;
-        } else {
-            // Registration future is almost always fulfilled already, but just in case it's not.
-            final PendingRegistrationPromise promise = new PendingRegistrationPromise(channel);
-            regFuture.addListener(new ChannelFutureListener() {
-                @Override
-                public void operationComplete(ChannelFuture future) throws Exception {
-                    Throwable cause = future.cause();
-                    if (cause != null) {
-                        // Registration on the EventLoop failed so fail the ChannelPromise directly to not cause an
-                        // IllegalStateException once we try to access the EventLoop of the Channel.
-                        promise.setFailure(cause);
-                    } else {
-                        // Registration was successful, so set the correct executor to use.
-                        // See https://github.com/netty/netty/issues/2586
-                        promise.registered();
-
-                        doBind0(regFuture, channel, localAddress, promise);
-                    }
-                }
-            });
-            return promise;
-        }
-    }
 
     final ChannelFuture initAndRegister() {
         Channel channel = null;
@@ -361,13 +383,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         });
     }
 
-    /**
-     * the {@link ChannelHandler} to use for serving the requests.
-     */
-    public B handler(ChannelHandler handler) {
-        this.handler = ObjectUtil.checkNotNull(handler, "handler");
-        return self();
-    }
+
 
     /**
      * Returns the configured {@link EventLoopGroup} or {@code null} if non is configured yet.

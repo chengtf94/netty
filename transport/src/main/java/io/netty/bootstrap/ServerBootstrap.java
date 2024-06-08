@@ -39,20 +39,32 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 服务端启动辅助类，用于设置一系列参数来绑定端口启动服务
+ * 服务端启动辅助类，用于设置一系列参数来绑定端口启动服务，负责对主从Reactor线程组相关的配置进行管理，其中带child前缀的配置方法是对从Reactor线程组的相关配置管理
  */
 public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerChannel> {
-
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(ServerBootstrap.class);
 
-    // The order in which child ChannelOptions are applied is important they may depend on each other for validation
-    // purposes.
-    private final Map<ChannelOption<?>, Object> childOptions = new LinkedHashMap<ChannelOption<?>, Object>();
-    private final Map<AttributeKey<?>, Object> childAttrs = new ConcurrentHashMap<AttributeKey<?>, Object>();
-    private final ServerBootstrapConfig config = new ServerBootstrapConfig(this);
+    /**
+     * 从Reactor线程组
+     */
     private volatile EventLoopGroup childGroup;
+    /**
+     * SocketChannel中的ChannelOption配置
+     */
+    private final Map<ChannelOption<?>, Object> childOptions = new LinkedHashMap<ChannelOption<?>, Object>();
+    /**
+     * SocketChannel中的AttributeKey配置
+     */
+    private final Map<AttributeKey<?>, Object> childAttrs = new ConcurrentHashMap<AttributeKey<?>, Object>();
+    /**
+     * SocketChannel中pipeline里的handler：主要是业务Handler，注意不要添加过多，并且不能再ChannelHandler中执行耗时的业务处理任务。
+     */
     private volatile ChannelHandler childHandler;
+    private final ServerBootstrapConfig config = new ServerBootstrapConfig(this);
 
+    /**
+     * 构造方法
+     */
     public ServerBootstrap() { }
 
     private ServerBootstrap(ServerBootstrap bootstrap) {
@@ -65,18 +77,13 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         childAttrs.putAll(bootstrap.childAttrs);
     }
 
-    /**
-     * Specify the {@link EventLoopGroup} which is used for the parent (acceptor) and the child (client).
-     */
     @Override
     public ServerBootstrap group(EventLoopGroup group) {
         return group(group, group);
     }
 
     /**
-     * Set the {@link EventLoopGroup} for the parent (acceptor) and the child (client). These
-     * {@link EventLoopGroup}'s are used to handle all the events and IO for {@link ServerChannel} and
-     * {@link Channel}'s.
+     * 配置主从Reactor线程组
      */
     public ServerBootstrap group(EventLoopGroup parentGroup, EventLoopGroup childGroup) {
         super.group(parentGroup);
@@ -88,9 +95,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
     }
 
     /**
-     * Allow to specify a {@link ChannelOption} which is used for the {@link Channel} instances once they get created
-     * (after the acceptor accepted the {@link Channel}). Use a value of {@code null} to remove a previous set
-     * {@link ChannelOption}.
+     * 设置从Reactor中的channel的option选项
      */
     public <T> ServerBootstrap childOption(ChannelOption<T> childOption, T value) {
         ObjectUtil.checkNotNull(childOption, "childOption");
@@ -105,8 +110,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
     }
 
     /**
-     * Set the specific {@link AttributeKey} with the given value on every child {@link Channel}. If the value is
-     * {@code null} the {@link AttributeKey} is removed
+     * 设置从Reactor中的channel的attr选项
      */
     public <T> ServerBootstrap childAttr(AttributeKey<T> childKey, T value) {
         ObjectUtil.checkNotNull(childKey, "childKey");
@@ -119,12 +123,24 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
     }
 
     /**
-     * Set the {@link ChannelHandler} which is used to serve the request for the {@link Channel}'s.
+     * 设置从Reactor中的Channel->pipeline->handler
      */
     public ServerBootstrap childHandler(ChannelHandler childHandler) {
         this.childHandler = ObjectUtil.checkNotNull(childHandler, "childHandler");
         return this;
     }
+
+
+
+
+
+
+
+
+
+
+
+
 
     @Override
     void init(Channel channel) {
