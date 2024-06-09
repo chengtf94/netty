@@ -60,19 +60,6 @@ public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor im
         tailTasks = ObjectUtil.checkNotNull(tailTaskQueue, "tailTaskQueue");
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
     @Override
     public EventLoopGroup parent() {
         return (EventLoopGroup) super.parent();
@@ -104,6 +91,19 @@ public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor im
         channel.unsafe().register(this, promise);
         return promise;
     }
+
+    /**
+     * 检查普通队列、尾部队列中是否有异步任务等待执行
+     */
+    @Override
+    protected boolean hasTasks() {
+        return super.hasTasks() || !tailTasks.isEmpty();
+    }
+
+
+
+
+
 
 
 
@@ -150,10 +150,6 @@ public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor im
         runAllTasksFrom(tailTasks);
     }
 
-    @Override
-    protected boolean hasTasks() {
-        return super.hasTasks() || !tailTasks.isEmpty();
-    }
 
     @Override
     public int pendingTasks() {

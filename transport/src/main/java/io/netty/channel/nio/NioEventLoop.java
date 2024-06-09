@@ -290,20 +290,21 @@ public final class NioEventLoop extends SingleThreadEventLoop {
      */
     @Override
     protected void run() {
+        // 记录轮询次数：用于解决JDK epoll的空轮询bug
         int selectCnt = 0;
         for (; ; ) {
             try {
                 int strategy;
                 try {
+                    // 根据轮询策略获取轮询结果
                     strategy = selectStrategy.calculateStrategy(selectNowSupplier, hasTasks());
                     switch (strategy) {
                         case SelectStrategy.CONTINUE:
                             continue;
-
                         case SelectStrategy.BUSY_WAIT:
-                            // fall-through to SELECT since the busy-wait is not supported with NIO
-
+                            // NIO不支持自旋（BUSY_WAIT）
                         case SelectStrategy.SELECT:
+                            // 核心逻辑是有任务需要执行，则Reactor线程立马执行异步任务，否则轮询IO事件
                             long curDeadlineNanos = nextScheduledTaskDeadlineNanos();
                             if (curDeadlineNanos == -1L) {
                                 curDeadlineNanos = NONE; // nothing on the calendar
@@ -329,7 +330,11 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     handleLoopException(e);
                     continue;
                 }
-
+                //  执行到这里说明满足了唤醒条件，Reactor线程从selector上被唤醒开始处理IO就绪事件和执行异步任务
+                //            /**
+                //                 * Reactor线程需要保证及时的执行异步任务，只要有异步任务提交，就需要退出轮询。
+                //                 * 有IO事件就优先处理IO事件，然后处理异步任务
+                //                 * */
                 selectCnt++;
                 cancelledKeys = 0;
                 needsToSelectAgain = false;
