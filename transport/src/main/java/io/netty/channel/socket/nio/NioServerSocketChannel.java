@@ -75,7 +75,16 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel implements
         return (ServerSocketChannel) super.javaChannel();
     }
 
-
+    @SuppressJava6Requirement(reason = "Usage guarded by java version check")
+    @Override
+    protected void doBind(SocketAddress localAddress) throws Exception {
+        // 调用JDK NIO 底层SelectableChannel 执行绑定操作
+        if (PlatformDependent.javaVersion() >= 7) {
+            javaChannel().bind(localAddress, config.getBacklog());
+        } else {
+            javaChannel().socket().bind(localAddress, config.getBacklog());
+        }
+    }
 
 
 
@@ -127,15 +136,7 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel implements
         return SocketUtils.localSocketAddress(javaChannel().socket());
     }
 
-    @SuppressJava6Requirement(reason = "Usage guarded by java version check")
-    @Override
-    protected void doBind(SocketAddress localAddress) throws Exception {
-        if (PlatformDependent.javaVersion() >= 7) {
-            javaChannel().bind(localAddress, config.getBacklog());
-        } else {
-            javaChannel().socket().bind(localAddress, config.getBacklog());
-        }
-    }
+
 
     @Override
     protected void doClose() throws Exception {

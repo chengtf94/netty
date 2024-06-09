@@ -131,6 +131,23 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         // NOOP
     }
 
+    @Override
+    public ChannelFuture bind(SocketAddress localAddress, ChannelPromise promise) {
+        // bind事件为outbound事件，在pipeline中是反向传播。先从TailContext开始反向传播直到HeadContext。
+        return pipeline.bind(localAddress, promise);
+    }
+
+    @Override
+    public Channel read() {
+        pipeline.read();
+        return this;
+    }
+
+    /**
+     * 向Selector注册监听事件OP_ACCEPT 或 读事件OP_READ
+     */
+    protected abstract void doBeginRead() throws Exception;
+
     /**
      * AbstractUnsafe
      */
@@ -232,8 +249,78 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
         }
 
+        @Override
+        public final void bind(final SocketAddress localAddress, final ChannelPromise promise) {
+            assertEventLoop();
 
+            if (!promise.setUncancellable() || !ensureOpen(promise)) {
+                return;
+            }
 
+            // See: https://github.com/netty/netty/issues/576
+            if (Boolean.TRUE.equals(config().getOption(ChannelOption.SO_BROADCAST)) &&
+                    localAddress instanceof InetSocketAddress &&
+                    !((InetSocketAddress) localAddress).getAddress().isAnyLocalAddress() &&
+                    !PlatformDependent.isWindows() && !PlatformDependent.maybeSuperUser()) {
+                logger.warn(
+                        "A non-root user can't receive a broadcast packet if the socket " +
+                                "is not bound to a wildcard address; binding to a non-wildcard " +
+                                "address (" + localAddress + ") anyway as requested.");
+            }
+
+            // channel还未激活  wasActive = false
+            boolean wasActive = isActive();
+            try {
+                // 调用具体channel实现类：io.netty.channel.socket.nio.NioServerSocketChannel.doBind
+                doBind(localAddress);
+            } catch (Throwable t) {
+                safeSetFailure(promise, t);
+                closeIfClosed();
+                return;
+            }
+
+            // 绑定成功后 channel激活 触发channelActive事件传播
+            if (!wasActive && isActive()) {
+                invokeLater(new Runnable() {
+                    @Override
+                    public void run() {
+                        // channelActive事件为inbound事件，在pipeline中的传播为正向传播，从HeadContext一直到TailContext为止。
+                        pipeline.fireChannelActive();
+                    }
+                });
+            }
+
+            // 回调注册在promise上的ChannelFutureListener
+            safeSetSuccess(promise);
+        }
+
+        private void invokeLater(Runnable task) {
+            try {
+                eventLoop().execute(task);
+            } catch (RejectedExecutionException e) {
+                logger.warn("Can't invoke task later as EventLoop rejected it", e);
+            }
+        }
+
+        @Override
+        public final void beginRead() {
+            assertEventLoop();
+            if (!isActive()) {
+                return;
+            }
+            try {
+                // 触发在selector上注册channel感兴趣的监听事件
+                doBeginRead();
+            } catch (final Exception e) {
+                invokeLater(new Runnable() {
+                    @Override
+                    public void run() {
+                        pipeline.fireExceptionCaught(e);
+                    }
+                });
+                close(voidPromise());
+            }
+        }
 
 
 
@@ -262,48 +349,6 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         @Override
         public final SocketAddress remoteAddress() {
             return remoteAddress0();
-        }
-
-        @Override
-        public final void bind(final SocketAddress localAddress, final ChannelPromise promise) {
-            assertEventLoop();
-
-            if (!promise.setUncancellable() || !ensureOpen(promise)) {
-                return;
-            }
-
-            // See: https://github.com/netty/netty/issues/576
-            if (Boolean.TRUE.equals(config().getOption(ChannelOption.SO_BROADCAST)) &&
-                    localAddress instanceof InetSocketAddress &&
-                    !((InetSocketAddress) localAddress).getAddress().isAnyLocalAddress() &&
-                    !PlatformDependent.isWindows() && !PlatformDependent.maybeSuperUser()) {
-                // Warn a user about the fact that a non-root user can't receive a
-                // broadcast packet on *nix if the socket is bound on non-wildcard address.
-                logger.warn(
-                        "A non-root user can't receive a broadcast packet if the socket " +
-                                "is not bound to a wildcard address; binding to a non-wildcard " +
-                                "address (" + localAddress + ") anyway as requested.");
-            }
-
-            boolean wasActive = isActive();
-            try {
-                doBind(localAddress);
-            } catch (Throwable t) {
-                safeSetFailure(promise, t);
-                closeIfClosed();
-                return;
-            }
-
-            if (!wasActive && isActive()) {
-                invokeLater(new Runnable() {
-                    @Override
-                    public void run() {
-                        pipeline.fireChannelActive();
-                    }
-                });
-            }
-
-            safeSetSuccess(promise);
         }
 
         @Override
@@ -573,27 +618,6 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         }
 
         @Override
-        public final void beginRead() {
-            assertEventLoop();
-
-            if (!isActive()) {
-                return;
-            }
-
-            try {
-                doBeginRead();
-            } catch (final Exception e) {
-                invokeLater(new Runnable() {
-                    @Override
-                    public void run() {
-                        pipeline.fireExceptionCaught(e);
-                    }
-                });
-                close(voidPromise());
-            }
-        }
-
-        @Override
         public final void write(Object msg, ChannelPromise promise) {
             assertEventLoop();
 
@@ -747,25 +771,6 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
             close(voidPromise());
-        }
-
-        private void invokeLater(Runnable task) {
-            try {
-                // This method is used by outbound operation implementations to trigger an inbound event later.
-                // They do not trigger an inbound event immediately because an outbound operation might have been
-                // triggered by another inbound event handler method.  If fired immediately, the call stack
-                // will look like this for example:
-                //
-                //   handlerA.inboundBufferUpdated() - (1) an inbound handler method closes a connection.
-                //   -> handlerA.ctx.close()
-                //      -> channel.unsafe.close()
-                //         -> handlerA.channelInactive() - (2) another inbound handler method called while in (1) yet
-                //
-                // which means the execution of two inbound handler methods of the same handler overlap undesirably.
-                eventLoop().execute(task);
-            } catch (RejectedExecutionException e) {
-                logger.warn("Can't invoke task later as EventLoop rejected it", e);
-            }
         }
 
         /**
@@ -950,11 +955,6 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
     }
 
     @Override
-    public ChannelFuture bind(SocketAddress localAddress, ChannelPromise promise) {
-        return pipeline.bind(localAddress, promise);
-    }
-
-    @Override
     public ChannelFuture connect(SocketAddress remoteAddress, ChannelPromise promise) {
         return pipeline.connect(remoteAddress, promise);
     }
@@ -977,12 +977,6 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
     @Override
     public ChannelFuture deregister(ChannelPromise promise) {
         return pipeline.deregister(promise);
-    }
-
-    @Override
-    public Channel read() {
-        pipeline.read();
-        return this;
     }
 
     @Override
@@ -1158,11 +1152,6 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
     protected void doDeregister() throws Exception {
         // NOOP
     }
-
-    /**
-     * Schedule a read operation.
-     */
-    protected abstract void doBeginRead() throws Exception;
 
     /**
      * Flush the content of the given buffer to the remote peer.

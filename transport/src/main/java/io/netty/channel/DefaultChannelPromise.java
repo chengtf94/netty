@@ -63,7 +63,11 @@ public class DefaultChannelPromise extends DefaultPromise<Void> implements Chann
         }
     }
 
-
+    @Override
+    public ChannelPromise sync() throws InterruptedException {
+        super.sync();
+        return this;
+    }
 
 
 
@@ -115,11 +119,7 @@ public class DefaultChannelPromise extends DefaultPromise<Void> implements Chann
         return this;
     }
 
-    @Override
-    public ChannelPromise sync() throws InterruptedException {
-        super.sync();
-        return this;
-    }
+
 
     @Override
     public ChannelPromise syncUninterruptibly() {

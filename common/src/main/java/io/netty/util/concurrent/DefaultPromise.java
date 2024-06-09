@@ -121,6 +121,7 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
      */
     private synchronized boolean checkNotifyWaiters() {
         if (waiters > 0) {
+            // 基于wait-notify线程间通知唤醒机制
             notifyAll();
         }
         return listeners != null;
@@ -264,15 +265,56 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
         return result != null && result != UNCANCELLABLE && !(result instanceof CauseHolder);
     }
 
+    @Override
+    public Promise<V> sync() throws InterruptedException {
+        await();
+        rethrowIfFailed();
+        return this;
+    }
 
+    @Override
+    public Promise<V> await() throws InterruptedException {
+        if (isDone()) {
+            return this;
+        }
 
+        if (Thread.interrupted()) {
+            throw new InterruptedException(toString());
+        }
 
+        checkDeadLock();
 
+        synchronized (this) {
+            while (!isDone()) {
+                incWaiters();
+                try {
+                    // 基于wait-notify线程间通知唤醒机制
+                    wait();
+                } finally {
+                    decWaiters();
+                }
+            }
+        }
+        return this;
+    }
 
+    protected void checkDeadLock() {
+        EventExecutor e = executor();
+        if (e != null && e.inEventLoop()) {
+            throw new BlockingOperationException(toString());
+        }
+    }
 
+    private void incWaiters() {
+        if (waiters == Short.MAX_VALUE) {
+            throw new IllegalStateException("too many waiters: " + this);
+        }
+        ++waiters;
+    }
 
-
-
+    private void decWaiters() {
+        --waiters;
+    }
 
 
 
@@ -392,30 +434,7 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
         return this;
     }
 
-    @Override
-    public Promise<V> await() throws InterruptedException {
-        if (isDone()) {
-            return this;
-        }
 
-        if (Thread.interrupted()) {
-            throw new InterruptedException(toString());
-        }
-
-        checkDeadLock();
-
-        synchronized (this) {
-            while (!isDone()) {
-                incWaiters();
-                try {
-                    wait();
-                } finally {
-                    decWaiters();
-                }
-            }
-        }
-        return this;
-    }
 
     @Override
     public Promise<V> awaitUninterruptibly() {
@@ -554,12 +573,7 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
 
 
 
-    @Override
-    public Promise<V> sync() throws InterruptedException {
-        await();
-        rethrowIfFailed();
-        return this;
-    }
+
 
     @Override
     public Promise<V> syncUninterruptibly() {
@@ -599,22 +613,7 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
         return buf;
     }
 
-    /**
-     * Get the executor used to notify listeners when this promise is complete.
-     * <p>
-     * It is assumed this executor will protect against {@link StackOverflowError} exceptions.
-     * The executor may be used to avoid {@link StackOverflowError} by executing a {@link Runnable} if the stack
-     * depth exceeds a threshold.
-     * @return The executor used to notify listeners when this promise is complete.
-     */
 
-
-    protected void checkDeadLock() {
-        EventExecutor e = executor();
-        if (e != null && e.inEventLoop()) {
-            throw new BlockingOperationException(toString());
-        }
-    }
 
     /**
      * Notify a listener that a future has completed.
@@ -689,16 +688,9 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
 
 
 
-    private void incWaiters() {
-        if (waiters == Short.MAX_VALUE) {
-            throw new IllegalStateException("too many waiters: " + this);
-        }
-        ++waiters;
-    }
 
-    private void decWaiters() {
-        --waiters;
-    }
+
+
 
     private void rethrowIfFailed() {
         Throwable cause = cause();

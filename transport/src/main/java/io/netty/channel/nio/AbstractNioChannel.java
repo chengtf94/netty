@@ -322,8 +322,19 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         return (NioEventLoop) super.eventLoop();
     }
 
-
-
+    @Override
+    protected void doBeginRead() throws Exception {
+        final SelectionKey selectionKey = this.selectionKey;
+        if (!selectionKey.isValid()) {
+            return;
+        }
+        readPending = true;
+        final int interestOps = selectionKey.interestOps();
+        if ((interestOps & readInterestOp) == 0) {
+            // 添加OP_ACCEPT或OP_READ事件到interestOps集合中
+            selectionKey.interestOps(interestOps | readInterestOp);
+        }
+    }
 
 
 
@@ -430,22 +441,6 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     @Override
     protected void doDeregister() throws Exception {
         eventLoop().cancel(selectionKey());
-    }
-
-    @Override
-    protected void doBeginRead() throws Exception {
-        // Channel.read() or ChannelHandlerContext.read() was called
-        final SelectionKey selectionKey = this.selectionKey;
-        if (!selectionKey.isValid()) {
-            return;
-        }
-
-        readPending = true;
-
-        final int interestOps = selectionKey.interestOps();
-        if ((interestOps & readInterestOp) == 0) {
-            selectionKey.interestOps(interestOps | readInterestOp);
-        }
     }
 
     /**

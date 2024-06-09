@@ -116,6 +116,43 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         }
 
         @Override
+        public void bind(ChannelHandlerContext ctx, SocketAddress localAddress, ChannelPromise promise) {
+            // 触发AbstractChannel->bind方法 执行JDK NIO SelectableChannel 执行底层绑定操作
+            unsafe.bind(localAddress, promise);
+        }
+
+        @Override
+        public void channelActive(ChannelHandlerContext ctx) {
+            // 在pipeline中继续向后传播channelActive事件
+            ctx.fireChannelActive();
+            // 如果是autoRead 则自动触发read事件传播，在read回调函数中，触发OP_ACCEPT注册
+            readIfIsAutoRead();
+        }
+
+        private void readIfIsAutoRead() {
+            // 如果是autoRead，则触发read事件传播
+            if (channel.config().isAutoRead()) {
+                channel.read();
+            }
+        }
+
+        @Override
+        public void read(ChannelHandlerContext ctx) {
+            // 触发注册OP_ACCEPT或OP_READ事件
+            unsafe.beginRead();
+        }
+
+        @Override
+        public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
+            unsafe.write(msg, promise);
+        }
+
+        @Override
+        public void flush(ChannelHandlerContext ctx) {
+            unsafe.flush();
+        }
+
+        @Override
         public ChannelHandler handler() {
             return this;
         }
@@ -128,12 +165,6 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         @Override
         public void handlerRemoved(ChannelHandlerContext ctx) {
             // NOOP
-        }
-
-        @Override
-        public void bind(
-                ChannelHandlerContext ctx, SocketAddress localAddress, ChannelPromise promise) {
-            unsafe.bind(localAddress, promise);
         }
 
         @Override
@@ -160,21 +191,6 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         }
 
         @Override
-        public void read(ChannelHandlerContext ctx) {
-            unsafe.beginRead();
-        }
-
-        @Override
-        public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
-            unsafe.write(msg, promise);
-        }
-
-        @Override
-        public void flush(ChannelHandlerContext ctx) {
-            unsafe.flush();
-        }
-
-        @Override
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
             ctx.fireExceptionCaught(cause);
         }
@@ -196,13 +212,6 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         }
 
         @Override
-        public void channelActive(ChannelHandlerContext ctx) {
-            ctx.fireChannelActive();
-
-            readIfIsAutoRead();
-        }
-
-        @Override
         public void channelInactive(ChannelHandlerContext ctx) {
             ctx.fireChannelInactive();
         }
@@ -215,14 +224,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         @Override
         public void channelReadComplete(ChannelHandlerContext ctx) {
             ctx.fireChannelReadComplete();
-
             readIfIsAutoRead();
-        }
-
-        private void readIfIsAutoRead() {
-            if (channel.config().isAutoRead()) {
-                channel.read();
-            }
         }
 
         @Override
@@ -481,8 +483,10 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         }
     }
 
-
-
+    @Override
+    public final ChannelFuture bind(SocketAddress localAddress, ChannelPromise promise) {
+        return tail.bind(localAddress, promise);
+    }
 
 
 
@@ -1263,11 +1267,6 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     public final ChannelPipeline flush() {
         tail.flush();
         return this;
-    }
-
-    @Override
-    public final ChannelFuture bind(SocketAddress localAddress, ChannelPromise promise) {
-        return tail.bind(localAddress, promise);
     }
 
     @Override
