@@ -100,6 +100,12 @@ public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor im
         return super.hasTasks() || !tailTasks.isEmpty();
     }
 
+    @Override
+    protected void afterRunningAllTasks() {
+        runAllTasksFrom(tailTasks);
+    }
+
+
 
 
 
@@ -145,10 +151,7 @@ public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor im
         return tailTasks.remove(ObjectUtil.checkNotNull(task, "task"));
     }
 
-    @Override
-    protected void afterRunningAllTasks() {
-        runAllTasksFrom(tailTasks);
-    }
+
 
 
     @Override

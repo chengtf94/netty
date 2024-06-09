@@ -25,11 +25,35 @@ import java.util.concurrent.TimeUnit;
 
 @SuppressWarnings("ComparableImplementedButEqualsNotOverridden")
 final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFuture<V>, PriorityQueueNode {
+
+    /**
+     * 启动时间点
+     */
     private static final long START_TIME = System.nanoTime();
+
+    static long deadlineToDelayNanos(long deadlineNanos) {
+        // 计算定时任务执行deadline  去除启动时间
+        return deadlineNanos == 0L ? 0L : Math.max(0L, deadlineNanos - nanoTime());
+    }
 
     static long nanoTime() {
         return System.nanoTime() - START_TIME;
     }
+
+
+
+    private long deadlineNanos;
+    public long deadlineNanos() {
+        return deadlineNanos;
+    }
+
+    public long delayNanos() {
+        return deadlineToDelayNanos(deadlineNanos());
+    }
+
+
+
+
 
     static long deadlineNanos(long delay) {
         long deadlineNanos = nanoTime() + delay;
@@ -44,12 +68,15 @@ final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFu
     // set once when added to priority queue
     private long id;
 
-    private long deadlineNanos;
+
     /* 0 - no repeat, >0 - repeat at fixed rate, <0 - repeat with fixed delay */
     private final long periodNanos;
 
     private int queueIndex = INDEX_NOT_IN_QUEUE;
 
+    /**
+     * 构造方法
+     */
     ScheduledFutureTask(AbstractScheduledEventExecutor executor,
             Runnable runnable, long nanoTime) {
 
@@ -101,9 +128,7 @@ final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFu
         return super.executor();
     }
 
-    public long deadlineNanos() {
-        return deadlineNanos;
-    }
+
 
     void setConsumed() {
         // Optimization to avoid checking system clock again
@@ -114,13 +139,7 @@ final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFu
         }
     }
 
-    public long delayNanos() {
-        return deadlineToDelayNanos(deadlineNanos());
-    }
 
-    static long deadlineToDelayNanos(long deadlineNanos) {
-        return deadlineNanos == 0L ? 0L : Math.max(0L, deadlineNanos - nanoTime());
-    }
 
     public long delayNanos(long currentTimeNanos) {
         return deadlineNanos == 0L ? 0L

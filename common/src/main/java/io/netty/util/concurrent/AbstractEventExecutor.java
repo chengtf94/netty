@@ -48,6 +48,17 @@ public abstract class AbstractEventExecutor extends AbstractExecutorService impl
         this.parent = parent;
     }
 
+    /**
+     * Try to execute the given {@link Runnable} and just log if it throws a {@link Throwable}.
+     */
+    protected static void safeExecute(Runnable task) {
+        try {
+            task.run();
+        } catch (Throwable t) {
+            logger.warn("A task raised an exception. Task: {}", task, t);
+        }
+    }
+
     @Override
     public EventExecutorGroup parent() {
         return parent;
@@ -154,17 +165,6 @@ public abstract class AbstractEventExecutor extends AbstractExecutorService impl
     @Override
     public ScheduledFuture<?> scheduleWithFixedDelay(Runnable command, long initialDelay, long delay, TimeUnit unit) {
         throw new UnsupportedOperationException();
-    }
-
-    /**
-     * Try to execute the given {@link Runnable} and just log if it throws a {@link Throwable}.
-     */
-    protected static void safeExecute(Runnable task) {
-        try {
-            task.run();
-        } catch (Throwable t) {
-            logger.warn("A task raised an exception. Task: {}", task, t);
-        }
     }
 
     /**

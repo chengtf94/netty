@@ -44,6 +44,15 @@ final class SelectedSelectionKeySet extends AbstractSet<SelectionKey> {
         keys = newKeys;
     }
 
+    void reset() {
+        reset(0);
+    }
+
+    void reset(int start) {
+        Arrays.fill(keys, start, size, null);
+        size = 0;
+    }
+
     @Override
     public boolean remove(Object o) {
         return false;
@@ -82,15 +91,6 @@ final class SelectedSelectionKeySet extends AbstractSet<SelectionKey> {
                 throw new UnsupportedOperationException();
             }
         };
-    }
-
-    void reset() {
-        reset(0);
-    }
-
-    void reset(int start) {
-        Arrays.fill(keys, start, size, null);
-        size = 0;
     }
 
 }

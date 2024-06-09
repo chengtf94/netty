@@ -336,6 +336,21 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         }
     }
 
+    @Override
+    protected void doDeregister() throws Exception {
+        eventLoop().cancel(selectionKey());
+    }
+
+    protected SelectionKey selectionKey() {
+        assert selectionKey != null;
+        return selectionKey;
+    }
+
+
+
+
+
+
 
 
 
@@ -351,19 +366,6 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         return ch.isOpen();
     }
 
-
-
-
-
-
-
-    /**
-     * Return the current {@link SelectionKey}
-     */
-    protected SelectionKey selectionKey() {
-        assert selectionKey != null;
-        return selectionKey;
-    }
 
     /**
      * @deprecated No longer supported.
@@ -438,10 +440,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
 
 
 
-    @Override
-    protected void doDeregister() throws Exception {
-        eventLoop().cancel(selectionKey());
-    }
+
 
     /**
      * Connect to the remote peer

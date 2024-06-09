@@ -81,7 +81,9 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
      */
     private final RejectedExecutionHandler rejectedExecutionHandler;
     /**
-     * 添加任务任务后是否唤醒Reactor线程
+     * 是否当且仅当只有调用addTask方法时才会唤醒Reactor线程
+     * true  表示 当且仅当只有调用addTask方法时 才会唤醒Reactor线程
+     * false 表示 并不是只有addTask方法才能唤醒Reactor 还有其他方法可以唤醒Reactor 默认设置false
      */
     private final boolean addTaskWakesUp;
     /**
@@ -197,6 +199,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     /**
      * 执行任务
+     * @param immediate 提交的task是否需要被立即执行，只要任务类型不是LazyRunnable类型的任务，都是需要立即执行的
      */
     private void execute(Runnable task, boolean immediate) {
         // 判断当前线程是否为Reactor线程
@@ -222,6 +225,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                 }
             }
         }
+        //
         if (!addTaskWakesUp && immediate) {
             wakeup(inEventLoop);
         }
@@ -361,10 +365,118 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     protected void wakeup(boolean inEventLoop) {
         if (!inEventLoop) {
-            // Use offer as we actually only need this to unblock the thread and if offer fails we do not care as there
-            // is already something in the queue.
             taskQueue.offer(WAKEUP_TASK);
         }
+    }
+
+    /**
+     * 处理异步任务：无超时时间限制
+     */
+    protected boolean runAllTasks() {
+        assert inEventLoop();
+        boolean fetchedAll;
+        boolean ranAtLeastOne = false;
+        do {
+            // #1 先将到期的定时任务一股脑的从定时任务队列scheduledTaskQueue中取出并转存到普通任务队列taskQueue中
+            fetchedAll = fetchFromScheduledTaskQueue();
+            // #2 由Reactor线程统一从普通任务队列taskQueue中取出任务执行
+            if (runAllTasksFrom(taskQueue)) {
+                ranAtLeastOne = true;
+            }
+        } while (!fetchedAll); // keep on processing until we fetched all scheduled tasks.
+        if (ranAtLeastOne) {
+            lastExecutionTime = ScheduledFutureTask.nanoTime();
+        }
+        // #3 执行存储于尾部任务队列tailTasks中的尾部任务
+        afterRunningAllTasks();
+        return ranAtLeastOne;
+    }
+
+    /**
+     * 处理异步任务：有超时时间限制，核心逻辑和上面一样的，只不过就是多了对超时时间的控制
+     */
+    protected boolean runAllTasks(long timeoutNanos) {
+        fetchFromScheduledTaskQueue();
+        // 若普通队列中没有任务，则执行队尾队列的任务
+        Runnable task = pollTask();
+        if (task == null) {
+            afterRunningAllTasks();
+            return false;
+        }
+        // 计算异步任务执行超时deadline
+        final long deadline = timeoutNanos > 0 ? ScheduledFutureTask.nanoTime() + timeoutNanos : 0;
+        long runTasks = 0;
+        long lastExecutionTime;
+        for (; ; ) {
+            safeExecute(task);
+            runTasks++;
+            // 每运行64个异步任务 检查一下是否达到执行deadline，若达到则停止执行异步任务
+            if ((runTasks & 0x3F) == 0) {
+                lastExecutionTime = ScheduledFutureTask.nanoTime();
+                if (lastExecutionTime >= deadline) {
+                    break;
+                }
+            }
+            task = pollTask();
+            if (task == null) {
+                lastExecutionTime = ScheduledFutureTask.nanoTime();
+                break;
+            }
+        }
+        afterRunningAllTasks();
+        this.lastExecutionTime = lastExecutionTime;
+        return true;
+    }
+
+    /**
+     * 将到期的定时任务一股脑的从定时任务队列scheduledTaskQueue中取出并转存到普通任务队列taskQueue中
+     */
+    private boolean fetchFromScheduledTaskQueue() {
+        if (scheduledTaskQueue == null || scheduledTaskQueue.isEmpty()) {
+            return true;
+        }
+        long nanoTime = AbstractScheduledEventExecutor.nanoTime();
+        for (; ; ) {
+            Runnable scheduledTask = pollScheduledTask(nanoTime);
+            if (scheduledTask == null) {
+                return true;
+            }
+            if (!taskQueue.offer(scheduledTask)) {
+                // No space left in the task queue add it back to the scheduledTaskQueue so we pick it up again.
+                scheduledTaskQueue.add((ScheduledFutureTask<?>) scheduledTask);
+                return false;
+            }
+        }
+    }
+
+    /**
+     * 执行普通任务队列taskQueue中的所有异步任务
+     */
+    protected final boolean runAllTasksFrom(Queue<Runnable> taskQueue) {
+        Runnable task = pollTaskFrom(taskQueue);
+        if (task == null) {
+            return false;
+        }
+        for (; ; ) {
+            safeExecute(task);
+            task = pollTaskFrom(taskQueue);
+            if (task == null) {
+                return true;
+            }
+        }
+    }
+
+    protected static Runnable pollTaskFrom(Queue<Runnable> taskQueue) {
+        for (; ; ) {
+            Runnable task = taskQueue.poll();
+            if (task != WAKEUP_TASK) {
+                return task;
+            }
+        }
+    }
+
+    @UnstableApi
+    protected void afterRunningAllTasks() {
     }
 
 
@@ -399,14 +511,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         return pollTaskFrom(taskQueue);
     }
 
-    protected static Runnable pollTaskFrom(Queue<Runnable> taskQueue) {
-        for (; ; ) {
-            Runnable task = taskQueue.poll();
-            if (task != WAKEUP_TASK) {
-                return task;
-            }
-        }
-    }
+
 
     /**
      * Take the next {@link Runnable} from the task queue and so will block if no task is currently present.
@@ -458,23 +563,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         }
     }
 
-    private boolean fetchFromScheduledTaskQueue() {
-        if (scheduledTaskQueue == null || scheduledTaskQueue.isEmpty()) {
-            return true;
-        }
-        long nanoTime = AbstractScheduledEventExecutor.nanoTime();
-        for (; ; ) {
-            Runnable scheduledTask = pollScheduledTask(nanoTime);
-            if (scheduledTask == null) {
-                return true;
-            }
-            if (!taskQueue.offer(scheduledTask)) {
-                // No space left in the task queue add it back to the scheduledTaskQueue so we pick it up again.
-                scheduledTaskQueue.add((ScheduledFutureTask<?>) scheduledTask);
-                return false;
-            }
-        }
-    }
+
 
     /**
      * @return {@code true} if at least one scheduled task was executed.
@@ -531,29 +620,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         return taskQueue.remove(ObjectUtil.checkNotNull(task, "task"));
     }
 
-    /**
-     * Poll all tasks from the task queue and run them via {@link Runnable#run()} method.
-     *
-     * @return {@code true} if and only if at least one task was run
-     */
-    protected boolean runAllTasks() {
-        assert inEventLoop();
-        boolean fetchedAll;
-        boolean ranAtLeastOne = false;
 
-        do {
-            fetchedAll = fetchFromScheduledTaskQueue();
-            if (runAllTasksFrom(taskQueue)) {
-                ranAtLeastOne = true;
-            }
-        } while (!fetchedAll); // keep on processing until we fetched all scheduled tasks.
-
-        if (ranAtLeastOne) {
-            lastExecutionTime = ScheduledFutureTask.nanoTime();
-        }
-        afterRunningAllTasks();
-        return ranAtLeastOne;
-    }
 
     /**
      * Execute all expired scheduled tasks and all current tasks in the executor queue until both queues are empty,
@@ -582,25 +649,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         return drainAttempt > 0;
     }
 
-    /**
-     * Runs all tasks from the passed {@code taskQueue}.
-     *
-     * @param taskQueue To poll and execute all tasks.
-     * @return {@code true} if at least one task was executed.
-     */
-    protected final boolean runAllTasksFrom(Queue<Runnable> taskQueue) {
-        Runnable task = pollTaskFrom(taskQueue);
-        if (task == null) {
-            return false;
-        }
-        for (; ; ) {
-            safeExecute(task);
-            task = pollTaskFrom(taskQueue);
-            if (task == null) {
-                return true;
-            }
-        }
-    }
+
 
     /**
      * What ever tasks are present in {@code taskQueue} when this method is invoked will be {@link Runnable#run()}.
@@ -623,53 +672,9 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         return true;
     }
 
-    /**
-     * Poll all tasks from the task queue and run them via {@link Runnable#run()} method.  This method stops running
-     * the tasks in the task queue and returns if it ran longer than {@code timeoutNanos}.
-     */
-    protected boolean runAllTasks(long timeoutNanos) {
-        fetchFromScheduledTaskQueue();
-        Runnable task = pollTask();
-        if (task == null) {
-            afterRunningAllTasks();
-            return false;
-        }
 
-        final long deadline = timeoutNanos > 0 ? ScheduledFutureTask.nanoTime() + timeoutNanos : 0;
-        long runTasks = 0;
-        long lastExecutionTime;
-        for (; ; ) {
-            safeExecute(task);
 
-            runTasks++;
 
-            // Check timeout every 64 tasks because nanoTime() is relatively expensive.
-            // XXX: Hard-coded value - will make it configurable if it is really a problem.
-            if ((runTasks & 0x3F) == 0) {
-                lastExecutionTime = ScheduledFutureTask.nanoTime();
-                if (lastExecutionTime >= deadline) {
-                    break;
-                }
-            }
-
-            task = pollTask();
-            if (task == null) {
-                lastExecutionTime = ScheduledFutureTask.nanoTime();
-                break;
-            }
-        }
-
-        afterRunningAllTasks();
-        this.lastExecutionTime = lastExecutionTime;
-        return true;
-    }
-
-    /**
-     * Invoked before returning from {@link #runAllTasks()} and {@link #runAllTasks(long)}.
-     */
-    @UnstableApi
-    protected void afterRunningAllTasks() {
-    }
 
     /**
      * Returns the amount of time left until the scheduled task with the closest dead line is executed.
