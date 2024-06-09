@@ -213,22 +213,27 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     /**
-     * 执行创建ServerSocketChannel并绑定端口：服务端开始启动，绑定端口地址，接收客户端连接
+     * 执行创建ServerSocketChannel并绑定端口：服务端开始启动，绑定端口地址，接收客户端连接（初始化、注册、绑定端口）
+     * ● 创建服务端NioServerSocketChannel并初始化。
+     * ● 将服务端NioServerSocketChannel注册到主Reactor线程组中。
+     * ● 注册成功后，开始初始化pipeline，然后在pipeline中触发channelRegister事件。
+     * ● 随后由NioServerSocketChannel绑定端口地址。
+     * ● 绑定端口地址成功后，向pipeline中触发传播ChannelActive事件，在ChannelActive事件回调中向主Reactor注册OP_ACCEPT事件，开始等待客户端连接。服务端启动完成。
      */
     private ChannelFuture doBind(final SocketAddress localAddress) {
-        // 异步创建、初始化、注册ServerSocketChannel到主Reactor上
+        // #1 异步创建、初始化、注册ServerSocketChannel到主Reactor上
         final ChannelFuture regFuture = initAndRegister();
         final Channel channel = regFuture.channel();
         if (regFuture.cause() != null) {
             return regFuture;
         }
         if (regFuture.isDone()) {
-            // ServerSocketChannel向主Reactor注册成功后开始绑定端口
+            // #2.1 若ServerSocketChannel向主Reactor注册成功，则开始绑定端口
             ChannelPromise promise = channel.newPromise();
             doBind0(regFuture, channel, localAddress, promise);
             return promise;
         } else {
-            // 若此时注册操作没有完成，则向regFuture添加operationComplete回调函数，注册成功后回调。
+            // #2.2 若此时注册操作没有完成，则向regFuture添加operationComplete回调函数，注册成功后回调。
             final PendingRegistrationPromise promise = new PendingRegistrationPromise(channel);
             regFuture.addListener(new ChannelFutureListener() {
                 @Override
@@ -250,12 +255,103 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         }
     }
 
+    public ChannelFuture register() {
+        validate();
+        return initAndRegister();
+    }
 
+    /**
+     * 初始化&注册NioServerSocketChannel
+     */
+    final ChannelFuture initAndRegister() {
+        Channel channel = null;
+        try {
 
+            // #1 创建NioServerSocketChannel：ReflectiveChannelFactory通过泛型，反射，工厂的方式灵活创建不同类型的Channel
+            channel = channelFactory.newChannel();
 
+            // #2 初始化NioServerSocketChannel
+            init(channel);
 
+        } catch (Throwable t) {
+            if (channel != null) {
+                // channel can be null if newChannel crashed (eg SocketException("too many open files"))
+                channel.unsafe().closeForcibly();
+                // as the Channel is not registered yet we need to force the usage of the GlobalEventExecutor
+                return new DefaultChannelPromise(channel, GlobalEventExecutor.INSTANCE).setFailure(t);
+            }
+            // as the Channel is not registered yet we need to force the usage of the GlobalEventExecutor
+            return new DefaultChannelPromise(new FailedChannel(), GlobalEventExecutor.INSTANCE).setFailure(t);
+        }
 
+        // #3 向主Reactor注册ServerSocketChannel
+        ChannelFuture regFuture = config().group().register(channel);
+        if (regFuture.cause() != null) {
+            if (channel.isRegistered()) {
+                channel.close();
+            } else {
+                channel.unsafe().closeForcibly();
+            }
+        }
 
+        return regFuture;
+    }
+
+    /**
+     * 初始化Channel
+     */
+    abstract void init(Channel channel) throws Exception;
+
+    /**
+     * 获取bootstrap配置
+     */
+    public abstract AbstractBootstrapConfig<B, C> config();
+
+    @Deprecated
+    public final EventLoopGroup group() {
+        return group;
+    }
+
+    static final class PendingRegistrationPromise extends DefaultChannelPromise {
+
+        // Is set to the correct EventExecutor once the registration was successful. Otherwise it will
+        // stay null and so the GlobalEventExecutor.INSTANCE will be used for notifications.
+        private volatile boolean registered;
+
+        PendingRegistrationPromise(Channel channel) {
+            super(channel);
+        }
+
+        void registered() {
+            registered = true;
+        }
+
+        @Override
+        protected EventExecutor executor() {
+            if (registered) {
+                return super.executor();
+            }
+            return GlobalEventExecutor.INSTANCE;
+        }
+    }
+
+    /**
+     * 将绑定端口地址的操作封装成异步任务，提交给Reactor执行
+     */
+    private static void doBind0(
+            final ChannelFuture regFuture, final Channel channel,
+            final SocketAddress localAddress, final ChannelPromise promise) {
+        channel.eventLoop().execute(new Runnable() {
+            @Override
+            public void run() {
+                if (regFuture.isSuccess()) {
+                    channel.bind(localAddress, promise).addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
+                } else {
+                    promise.setFailure(regFuture.cause());
+                }
+            }
+        });
+    }
 
 
 
@@ -316,90 +412,14 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     @SuppressWarnings("CloneDoesntDeclareCloneNotSupportedException")
     public abstract B clone();
 
-    /**
-     * Create a new {@link Channel} and register it with an {@link EventLoop}.
-     */
-    public ChannelFuture register() {
-        validate();
-        return initAndRegister();
-    }
 
 
 
-    final ChannelFuture initAndRegister() {
-        Channel channel = null;
-        try {
-            channel = channelFactory.newChannel();
-            init(channel);
-        } catch (Throwable t) {
-            if (channel != null) {
-                // channel can be null if newChannel crashed (eg SocketException("too many open files"))
-                channel.unsafe().closeForcibly();
-                // as the Channel is not registered yet we need to force the usage of the GlobalEventExecutor
-                return new DefaultChannelPromise(channel, GlobalEventExecutor.INSTANCE).setFailure(t);
-            }
-            // as the Channel is not registered yet we need to force the usage of the GlobalEventExecutor
-            return new DefaultChannelPromise(new FailedChannel(), GlobalEventExecutor.INSTANCE).setFailure(t);
-        }
-
-        ChannelFuture regFuture = config().group().register(channel);
-        if (regFuture.cause() != null) {
-            if (channel.isRegistered()) {
-                channel.close();
-            } else {
-                channel.unsafe().closeForcibly();
-            }
-        }
-
-        // If we are here and the promise is not failed, it's one of the following cases:
-        // 1) If we attempted registration from the event loop, the registration has been completed at this point.
-        //    i.e. It's safe to attempt bind() or connect() now because the channel has been registered.
-        // 2) If we attempted registration from the other thread, the registration request has been successfully
-        //    added to the event loop's task queue for later execution.
-        //    i.e. It's safe to attempt bind() or connect() now:
-        //         because bind() or connect() will be executed *after* the scheduled registration task is executed
-        //         because register(), bind(), and connect() are all bound to the same thread.
-
-        return regFuture;
-    }
-
-    abstract void init(Channel channel) throws Exception;
-
-    private static void doBind0(
-            final ChannelFuture regFuture, final Channel channel,
-            final SocketAddress localAddress, final ChannelPromise promise) {
-
-        // This method is invoked before channelRegistered() is triggered.  Give user handlers a chance to set up
-        // the pipeline in its channelRegistered() implementation.
-        channel.eventLoop().execute(new Runnable() {
-            @Override
-            public void run() {
-                if (regFuture.isSuccess()) {
-                    channel.bind(localAddress, promise).addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
-                } else {
-                    promise.setFailure(regFuture.cause());
-                }
-            }
-        });
-    }
 
 
 
-    /**
-     * Returns the configured {@link EventLoopGroup} or {@code null} if non is configured yet.
-     *
-     * @deprecated Use {@link #config()} instead.
-     */
-    @Deprecated
-    public final EventLoopGroup group() {
-        return group;
-    }
 
-    /**
-     * Returns the {@link AbstractBootstrapConfig} object that can be used to obtain the current config
-     * of the bootstrap.
-     */
-    public abstract AbstractBootstrapConfig<B, C> config();
+
 
     final Map.Entry<ChannelOption<?>, Object>[] newOptionsArray() {
         synchronized (options) {
@@ -453,8 +473,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         }
     }
 
-    static void setChannelOptions(
-            Channel channel, Map.Entry<ChannelOption<?>, Object>[] options, InternalLogger logger) {
+    static void setChannelOptions(Channel channel, Map.Entry<ChannelOption<?>, Object>[] options, InternalLogger logger) {
         for (Map.Entry<ChannelOption<?>, Object> e: options) {
             setChannelOption(channel, e.getKey(), e.getValue(), logger);
         }
@@ -481,30 +500,6 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         return buf.toString();
     }
 
-    static final class PendingRegistrationPromise extends DefaultChannelPromise {
 
-        // Is set to the correct EventExecutor once the registration was successful. Otherwise it will
-        // stay null and so the GlobalEventExecutor.INSTANCE will be used for notifications.
-        private volatile boolean registered;
 
-        PendingRegistrationPromise(Channel channel) {
-            super(channel);
-        }
-
-        void registered() {
-            registered = true;
-        }
-
-        @Override
-        protected EventExecutor executor() {
-            if (registered) {
-                // If the registration was a success executor is set.
-                //
-                // See https://github.com/netty/netty/issues/2586
-                return super.executor();
-            }
-            // The registration failed so we can only use the GlobalEventExecutor as last resort to notify.
-            return GlobalEventExecutor.INSTANCE;
-        }
-    }
 }

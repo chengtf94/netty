@@ -30,7 +30,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * {@link AbstractNioChannel} base class for {@link Channel}s that operate on messages.
+ * AbstractNioMessageChannel：主要是对NioServerSocketChannel底层读写行为的封装和定义，例如accept接收客户端连接
  */
 public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
     boolean inputShutdown;
@@ -47,14 +47,9 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
         return new NioMessageUnsafe();
     }
 
-    @Override
-    protected void doBeginRead() throws Exception {
-        if (inputShutdown) {
-            return;
-        }
-        super.doBeginRead();
-    }
-
+    /**
+     * NioMessageUnsafe
+     */
     private final class NioMessageUnsafe extends AbstractNioUnsafe {
 
         private final List<Object> readBuf = new ArrayList<Object>();
@@ -120,6 +115,23 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
                 }
             }
         }
+    }
+
+
+
+
+
+
+
+
+
+
+    @Override
+    protected void doBeginRead() throws Exception {
+        if (inputShutdown) {
+            return;
+        }
+        super.doBeginRead();
     }
 
     @Override

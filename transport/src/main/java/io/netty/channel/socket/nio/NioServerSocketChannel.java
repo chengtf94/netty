@@ -27,16 +27,36 @@ import java.util.Map;
 /**
  * 基于NIO模型的ServerSocketChannel：对应监听Socket，负责绑定监听端口地址，接收客户端连接并创建用于与客户端通信的SocketChannel。
  */
-public class NioServerSocketChannel extends AbstractNioMessageChannel
-                             implements io.netty.channel.socket.ServerSocketChannel {
+public class NioServerSocketChannel extends AbstractNioMessageChannel implements io.netty.channel.socket.ServerSocketChannel {
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(NioServerSocketChannel.class);
 
     /**
-     * 用于创建Selector和Selectable Channels
+     * 默认SelectorProvider：用于创建Selector和Selectable Channels
      */
     private static final SelectorProvider DEFAULT_SELECTOR_PROVIDER = SelectorProvider.provider();
     private static final ChannelMetadata METADATA = new ChannelMetadata(false, 16);
+    /**
+     * ServerSocketChannel相关的配置
+     */
+    private final ServerSocketChannelConfig config;
 
+    /**
+     * 构造方法
+     */
+    public NioServerSocketChannel() {
+        this(newSocket(DEFAULT_SELECTOR_PROVIDER));
+    }
+
+    public NioServerSocketChannel(SelectorProvider provider) {
+        this(newSocket(provider));
+    }
+
+    public NioServerSocketChannel(ServerSocketChannel channel) {
+        // 父类AbstractNioChannel中保存JDK NIO原生ServerSocketChannel以及要监听的事件OP_ACCEPT
+        super(null, channel, SelectionKey.OP_ACCEPT);
+        // 创建ServerSocketChannel配置类
+        config = new NioServerSocketChannelConfig(this, javaChannel().socket());
+    }
 
     /**
      * 创建JDK NIO ServerSocketChannel
@@ -50,31 +70,23 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
         }
     }
 
-    /**
-     * ServerSocketChannel相关的配置
-     */
-    private final ServerSocketChannelConfig config;
-
-    /**
-     * 构造方法
-     */
-    public NioServerSocketChannel() {
-        this(newSocket(DEFAULT_SELECTOR_PROVIDER));
-    }
-    public NioServerSocketChannel(SelectorProvider provider) {
-        this(newSocket(provider));
-    }
-    public NioServerSocketChannel(ServerSocketChannel channel) {
-        // 父类AbstractNioChannel中保存JDK NIO原生ServerSocketChannel以及要监听的事件OP_ACCEPT
-        super(null, channel, SelectionKey.OP_ACCEPT);
-        // 创建ServerSocketChannel配置类
-        // DefaultChannelConfig中设置用于Channel接收数据用的Buffer->AdaptiveRecvByteBufAllocator
-        config = new NioServerSocketChannelConfig(this, javaChannel().socket());
-    }
     @Override
     protected ServerSocketChannel javaChannel() {
         return (ServerSocketChannel) super.javaChannel();
     }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -108,7 +120,6 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
     public InetSocketAddress remoteAddress() {
         return null;
     }
-
 
 
     @Override
@@ -186,7 +197,8 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
     }
 
     /**
-     * ServerSocketChannel配置类
+     * ServerSocketChannel配置类：在配置类中封装了对Channel底层的一些配置行为，以及JDK中的ServerSocket、
+     * 以及创建NioServerSocketChannel接收数据用的Buffer分配器AdaptiveRecvByteBufAllocator
      */
     private final class NioServerSocketChannelConfig extends DefaultServerSocketChannelConfig {
         private NioServerSocketChannelConfig(NioServerSocketChannel channel, ServerSocket javaSocket) {

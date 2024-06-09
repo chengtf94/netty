@@ -108,6 +108,7 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
         if (RESULT_UPDATER.compareAndSet(this, null, objResult) ||
                 RESULT_UPDATER.compareAndSet(this, UNCANCELLABLE, objResult)) {
             if (checkNotifyWaiters()) {
+                // 回调注册在promise上的listeners
                 notifyListeners();
             }
             return true;
@@ -252,23 +253,31 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
         return result != null && result != UNCANCELLABLE;
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
     @Override
     public boolean trySuccess(V result) {
         return setSuccess0(result);
     }
+
+    @Override
+    public boolean isSuccess() {
+        Object result = this.result;
+        return result != null && result != UNCANCELLABLE && !(result instanceof CauseHolder);
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     @Override
     public Promise<V> setFailure(Throwable cause) {
@@ -292,11 +301,7 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
         return !isDone0(result) || !isCancelled0(result);
     }
 
-    @Override
-    public boolean isSuccess() {
-        Object result = this.result;
-        return result != null && result != UNCANCELLABLE && !(result instanceof CauseHolder);
-    }
+
 
     @Override
     public boolean isCancellable() {

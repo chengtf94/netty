@@ -56,6 +56,9 @@ public abstract class AbstractNioChannel extends AbstractChannel {
      *  Channel监听事件集合，例如ServerSocketChannel是SelectionKey.OP_ACCEPT连接事件
      */
     protected final int readInterestOp;
+    /**
+     * Channel注册到Selector后获得的SelectKey：封装了Channel感兴趣的IO事件集合~~~interestOps、IO就绪的事件集合~~readyOps、以及对应的JDK NIO Channel以及注册的Selector
+     */
     volatile SelectionKey selectionKey;
     boolean readPending;
     private final Runnable clearReadPendingRunnable = new Runnable() {
@@ -64,10 +67,8 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             clearReadPending0();
         }
     };
-
     /**
-     * The future of the current connection attempt.  If not null, subsequent
-     * connection attempts will fail.
+     * The future of the current connection attempt.  If not null, subsequent connection attempts will fail.
      */
     private ChannelPromise connectPromise;
     private ScheduledFuture<?> connectTimeoutFuture;
@@ -93,107 +94,8 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         }
     }
 
-
-
-
-
-
-
-    @Override
-    public boolean isOpen() {
-        return ch.isOpen();
-    }
-
-    @Override
-    public NioUnsafe unsafe() {
-        return (NioUnsafe) super.unsafe();
-    }
-
-    protected SelectableChannel javaChannel() {
-        return ch;
-    }
-
-    @Override
-    public NioEventLoop eventLoop() {
-        return (NioEventLoop) super.eventLoop();
-    }
-
     /**
-     * Return the current {@link SelectionKey}
-     */
-    protected SelectionKey selectionKey() {
-        assert selectionKey != null;
-        return selectionKey;
-    }
-
-    /**
-     * @deprecated No longer supported.
-     * No longer supported.
-     */
-    @Deprecated
-    protected boolean isReadPending() {
-        return readPending;
-    }
-
-    /**
-     * @deprecated Use {@link #clearReadPending()} if appropriate instead.
-     * No longer supported.
-     */
-    @Deprecated
-    protected void setReadPending(final boolean readPending) {
-        if (isRegistered()) {
-            EventLoop eventLoop = eventLoop();
-            if (eventLoop.inEventLoop()) {
-                setReadPending0(readPending);
-            } else {
-                eventLoop.execute(new Runnable() {
-                    @Override
-                    public void run() {
-                        setReadPending0(readPending);
-                    }
-                });
-            }
-        } else {
-            // Best effort if we are not registered yet clear readPending.
-            // NB: We only set the boolean field instead of calling clearReadPending0(), because the SelectionKey is
-            // not set yet so it would produce an assertion failure.
-            this.readPending = readPending;
-        }
-    }
-
-    /**
-     * Set read pending to {@code false}.
-     */
-    protected final void clearReadPending() {
-        if (isRegistered()) {
-            EventLoop eventLoop = eventLoop();
-            if (eventLoop.inEventLoop()) {
-                clearReadPending0();
-            } else {
-                eventLoop.execute(clearReadPendingRunnable);
-            }
-        } else {
-            // Best effort if we are not registered yet clear readPending. This happens during channel initialization.
-            // NB: We only set the boolean field instead of calling clearReadPending0(), because the SelectionKey is
-            // not set yet so it would produce an assertion failure.
-            readPending = false;
-        }
-    }
-
-    private void setReadPending0(boolean readPending) {
-        this.readPending = readPending;
-        if (!readPending) {
-            ((AbstractNioUnsafe) unsafe()).removeReadOp();
-        }
-    }
-
-    private void clearReadPending0() {
-        readPending = false;
-        ((AbstractNioUnsafe) unsafe()).removeReadOp();
-    }
-
-    /**
-     * Special {@link Unsafe} sub-type which allows to access the underlying {@link SelectableChannel}
+     * NioUnsafe接口
      */
     public interface NioUnsafe extends Unsafe {
         /**
@@ -214,6 +116,9 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         void forceFlush();
     }
 
+    /**
+     * AbstractNioUnsafe
+     */
     protected abstract class AbstractNioUnsafe extends AbstractUnsafe implements NioUnsafe {
 
         protected final void removeReadOp() {
@@ -265,7 +170,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                                 ChannelPromise connectPromise = AbstractNioChannel.this.connectPromise;
                                 if (connectPromise != null && !connectPromise.isDone()
                                         && connectPromise.tryFailure(new ConnectTimeoutException(
-                                                "connection timed out: " + remoteAddress))) {
+                                        "connection timed out: " + remoteAddress))) {
                                     close(voidPromise());
                                 }
                             }
@@ -373,31 +278,154 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     }
 
     @Override
+    public NioUnsafe unsafe() {
+        return (NioUnsafe) super.unsafe();
+    }
+
+    @Override
     protected boolean isCompatible(EventLoop loop) {
         return loop instanceof NioEventLoop;
     }
 
+    /**
+     * 向Reactor注册Channel
+     */
     @Override
     protected void doRegister() throws Exception {
         boolean selected = false;
         for (;;) {
             try {
+                // 将NIOServerSocketChannel中包装的JDK NIO ServerSocketChannel注册到Reactor中的JDK NIO Selector上
+                // 1）Selector：表示JDK NIO Channel将要向哪个Selector进行注册。
+                // 2）ops： 表示Channel上感兴趣的IO事件，当对应的IO事件就绪时，Selector会返回Channel对应的SelectionKey。
+                // 3）attachment：向SelectionKey中添加用户自定义的附加对象，这里完成Netty自定义Channel与JDK NIO Channel的关系绑定，从而在每次对Selector
+                // 进行IO就绪事件轮询时，Netty 都可以从 JDK NIO Selector返回的SelectionKey中获取到自定义的Channel对象（这里指的就是NioServerSocketChannel）
                 selectionKey = javaChannel().register(eventLoop().unwrappedSelector(), 0, this);
                 return;
             } catch (CancelledKeyException e) {
                 if (!selected) {
-                    // Force the Selector to select now as the "canceled" SelectionKey may still be
-                    // cached and not removed because no Select.select(..) operation was called yet.
                     eventLoop().selectNow();
                     selected = true;
                 } else {
-                    // We forced a select operation on the selector before but the SelectionKey is still cached
-                    // for whatever reason. JDK bug ?
                     throw e;
                 }
             }
         }
     }
+
+    protected SelectableChannel javaChannel() {
+        return ch;
+    }
+
+    @Override
+    public NioEventLoop eventLoop() {
+        return (NioEventLoop) super.eventLoop();
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    @Override
+    public boolean isOpen() {
+        return ch.isOpen();
+    }
+
+
+
+
+
+
+
+    /**
+     * Return the current {@link SelectionKey}
+     */
+    protected SelectionKey selectionKey() {
+        assert selectionKey != null;
+        return selectionKey;
+    }
+
+    /**
+     * @deprecated No longer supported.
+     * No longer supported.
+     */
+    @Deprecated
+    protected boolean isReadPending() {
+        return readPending;
+    }
+
+    /**
+     * @deprecated Use {@link #clearReadPending()} if appropriate instead.
+     * No longer supported.
+     */
+    @Deprecated
+    protected void setReadPending(final boolean readPending) {
+        if (isRegistered()) {
+            EventLoop eventLoop = eventLoop();
+            if (eventLoop.inEventLoop()) {
+                setReadPending0(readPending);
+            } else {
+                eventLoop.execute(new Runnable() {
+                    @Override
+                    public void run() {
+                        setReadPending0(readPending);
+                    }
+                });
+            }
+        } else {
+            // Best effort if we are not registered yet clear readPending.
+            // NB: We only set the boolean field instead of calling clearReadPending0(), because the SelectionKey is
+            // not set yet so it would produce an assertion failure.
+            this.readPending = readPending;
+        }
+    }
+
+    /**
+     * Set read pending to {@code false}.
+     */
+    protected final void clearReadPending() {
+        if (isRegistered()) {
+            EventLoop eventLoop = eventLoop();
+            if (eventLoop.inEventLoop()) {
+                clearReadPending0();
+            } else {
+                eventLoop.execute(clearReadPendingRunnable);
+            }
+        } else {
+            // Best effort if we are not registered yet clear readPending. This happens during channel initialization.
+            // NB: We only set the boolean field instead of calling clearReadPending0(), because the SelectionKey is
+            // not set yet so it would produce an assertion failure.
+            readPending = false;
+        }
+    }
+
+    private void setReadPending0(boolean readPending) {
+        this.readPending = readPending;
+        if (!readPending) {
+            ((AbstractNioUnsafe) unsafe()).removeReadOp();
+        }
+    }
+
+    private void clearReadPending0() {
+        readPending = false;
+        ((AbstractNioUnsafe) unsafe()).removeReadOp();
+    }
+
+
+
+
+
+
+
 
     @Override
     protected void doDeregister() throws Exception {

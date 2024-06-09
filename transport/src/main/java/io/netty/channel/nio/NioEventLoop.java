@@ -286,8 +286,134 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     }
 
     /**
-     * Returns the {@link SelectorProvider} used by this {@link NioEventLoop} to obtain the {@link Selector}.
+     * Reactor线程的核心工作：轮询所有注册其上的Channel中的IO就绪事件，处理对应Channel上的IO事件，执行异步任务。
      */
+    @Override
+    protected void run() {
+        int selectCnt = 0;
+        for (; ; ) {
+            try {
+                int strategy;
+                try {
+                    strategy = selectStrategy.calculateStrategy(selectNowSupplier, hasTasks());
+                    switch (strategy) {
+                        case SelectStrategy.CONTINUE:
+                            continue;
+
+                        case SelectStrategy.BUSY_WAIT:
+                            // fall-through to SELECT since the busy-wait is not supported with NIO
+
+                        case SelectStrategy.SELECT:
+                            long curDeadlineNanos = nextScheduledTaskDeadlineNanos();
+                            if (curDeadlineNanos == -1L) {
+                                curDeadlineNanos = NONE; // nothing on the calendar
+                            }
+                            nextWakeupNanos.set(curDeadlineNanos);
+                            try {
+                                if (!hasTasks()) {
+                                    strategy = select(curDeadlineNanos);
+                                }
+                            } finally {
+                                // This update is just to help block unnecessary selector wakeups
+                                // so use of lazySet is ok (no race condition)
+                                nextWakeupNanos.lazySet(AWAKE);
+                            }
+                            // fall through
+                        default:
+                    }
+                } catch (IOException e) {
+                    // If we receive an IOException here its because the Selector is messed up. Let's rebuild
+                    // the selector and retry. https://github.com/netty/netty/issues/8566
+                    rebuildSelector0();
+                    selectCnt = 0;
+                    handleLoopException(e);
+                    continue;
+                }
+
+                selectCnt++;
+                cancelledKeys = 0;
+                needsToSelectAgain = false;
+                final int ioRatio = this.ioRatio;
+                boolean ranTasks;
+                if (ioRatio == 100) {
+                    try {
+                        if (strategy > 0) {
+                            processSelectedKeys();
+                        }
+                    } finally {
+                        // Ensure we always run tasks.
+                        ranTasks = runAllTasks();
+                    }
+                } else if (strategy > 0) {
+                    final long ioStartTime = System.nanoTime();
+                    try {
+                        processSelectedKeys();
+                    } finally {
+                        // Ensure we always run tasks.
+                        final long ioTime = System.nanoTime() - ioStartTime;
+                        ranTasks = runAllTasks(ioTime * (100 - ioRatio) / ioRatio);
+                    }
+                } else {
+                    ranTasks = runAllTasks(0); // This will run the minimum number of tasks
+                }
+
+                if (ranTasks || strategy > 0) {
+                    if (selectCnt > MIN_PREMATURE_SELECTOR_RETURNS && logger.isDebugEnabled()) {
+                        logger.debug("Selector.select() returned prematurely {} times in a row for Selector {}.",
+                                selectCnt - 1, selector);
+                    }
+                    selectCnt = 0;
+                } else if (unexpectedSelectorWakeup(selectCnt)) { // Unexpected wakeup (unusual case)
+                    selectCnt = 0;
+                }
+            } catch (CancelledKeyException e) {
+                // Harmless exception - log anyway
+                if (logger.isDebugEnabled()) {
+                    logger.debug(CancelledKeyException.class.getSimpleName() + " raised by a Selector {} - JDK bug?",
+                            selector, e);
+                }
+            } catch (Error e) {
+                throw (Error) e;
+            } catch (Throwable t) {
+                handleLoopException(t);
+            } finally {
+                // Always handle shutdown even if the loop processing threw an exception.
+                try {
+                    if (isShuttingDown()) {
+                        closeAll();
+                        if (confirmShutdown()) {
+                            return;
+                        }
+                    }
+                } catch (Error e) {
+                    throw (Error) e;
+                } catch (Throwable t) {
+                    handleLoopException(t);
+                }
+            }
+        }
+    }
+
+    Selector unwrappedSelector() {
+        return unwrappedSelector;
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     public SelectorProvider selectorProvider() {
         return provider;
     }
@@ -446,112 +572,6 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
         if (logger.isInfoEnabled()) {
             logger.info("Migrated " + nChannels + " channel(s) to the new Selector.");
-        }
-    }
-
-    @Override
-    protected void run() {
-        int selectCnt = 0;
-        for (; ; ) {
-            try {
-                int strategy;
-                try {
-                    strategy = selectStrategy.calculateStrategy(selectNowSupplier, hasTasks());
-                    switch (strategy) {
-                        case SelectStrategy.CONTINUE:
-                            continue;
-
-                        case SelectStrategy.BUSY_WAIT:
-                            // fall-through to SELECT since the busy-wait is not supported with NIO
-
-                        case SelectStrategy.SELECT:
-                            long curDeadlineNanos = nextScheduledTaskDeadlineNanos();
-                            if (curDeadlineNanos == -1L) {
-                                curDeadlineNanos = NONE; // nothing on the calendar
-                            }
-                            nextWakeupNanos.set(curDeadlineNanos);
-                            try {
-                                if (!hasTasks()) {
-                                    strategy = select(curDeadlineNanos);
-                                }
-                            } finally {
-                                // This update is just to help block unnecessary selector wakeups
-                                // so use of lazySet is ok (no race condition)
-                                nextWakeupNanos.lazySet(AWAKE);
-                            }
-                            // fall through
-                        default:
-                    }
-                } catch (IOException e) {
-                    // If we receive an IOException here its because the Selector is messed up. Let's rebuild
-                    // the selector and retry. https://github.com/netty/netty/issues/8566
-                    rebuildSelector0();
-                    selectCnt = 0;
-                    handleLoopException(e);
-                    continue;
-                }
-
-                selectCnt++;
-                cancelledKeys = 0;
-                needsToSelectAgain = false;
-                final int ioRatio = this.ioRatio;
-                boolean ranTasks;
-                if (ioRatio == 100) {
-                    try {
-                        if (strategy > 0) {
-                            processSelectedKeys();
-                        }
-                    } finally {
-                        // Ensure we always run tasks.
-                        ranTasks = runAllTasks();
-                    }
-                } else if (strategy > 0) {
-                    final long ioStartTime = System.nanoTime();
-                    try {
-                        processSelectedKeys();
-                    } finally {
-                        // Ensure we always run tasks.
-                        final long ioTime = System.nanoTime() - ioStartTime;
-                        ranTasks = runAllTasks(ioTime * (100 - ioRatio) / ioRatio);
-                    }
-                } else {
-                    ranTasks = runAllTasks(0); // This will run the minimum number of tasks
-                }
-
-                if (ranTasks || strategy > 0) {
-                    if (selectCnt > MIN_PREMATURE_SELECTOR_RETURNS && logger.isDebugEnabled()) {
-                        logger.debug("Selector.select() returned prematurely {} times in a row for Selector {}.",
-                                selectCnt - 1, selector);
-                    }
-                    selectCnt = 0;
-                } else if (unexpectedSelectorWakeup(selectCnt)) { // Unexpected wakeup (unusual case)
-                    selectCnt = 0;
-                }
-            } catch (CancelledKeyException e) {
-                // Harmless exception - log anyway
-                if (logger.isDebugEnabled()) {
-                    logger.debug(CancelledKeyException.class.getSimpleName() + " raised by a Selector {} - JDK bug?",
-                            selector, e);
-                }
-            } catch (Error e) {
-                throw (Error) e;
-            } catch (Throwable t) {
-                handleLoopException(t);
-            } finally {
-                // Always handle shutdown even if the loop processing threw an exception.
-                try {
-                    if (isShuttingDown()) {
-                        closeAll();
-                        if (confirmShutdown()) {
-                            return;
-                        }
-                    }
-                } catch (Error e) {
-                    throw (Error) e;
-                } catch (Throwable t) {
-                    handleLoopException(t);
-                }
-            }
         }
     }
 
@@ -815,9 +835,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         return deadlineNanos < nextWakeupNanos.get();
     }
 
-    Selector unwrappedSelector() {
-        return unwrappedSelector;
-    }
+
 
     int selectNow() throws IOException {
         return selector.selectNow();

@@ -24,33 +24,33 @@ import io.netty.util.concurrent.GenericFutureListener;
 import static io.netty.util.internal.ObjectUtil.checkNotNull;
 
 /**
- * The default {@link ChannelPromise} implementation.  It is recommended to use {@link Channel#newPromise()} to create
- * a new {@link ChannelPromise} rather than calling the constructor explicitly.
+ * DefaultChannelPromise
  */
 public class DefaultChannelPromise extends DefaultPromise<Void> implements ChannelPromise, FlushCheckpoint {
-
+    /**
+     * Channel
+     */
     private final Channel channel;
+    /**
+     * 检查点
+     */
     private long checkpoint;
 
     /**
-     * Creates a new instance.
-     *
-     * @param channel
-     *        the {@link Channel} associated with this future
+     * 构造方法
      */
     public DefaultChannelPromise(Channel channel) {
         this.channel = checkNotNull(channel, "channel");
     }
 
-    /**
-     * Creates a new instance.
-     *
-     * @param channel
-     *        the {@link Channel} associated with this future
-     */
     public DefaultChannelPromise(Channel channel, EventExecutor executor) {
         super(executor);
         this.channel = checkNotNull(channel, "channel");
+    }
+
+    @Override
+    public boolean trySuccess() {
+        return trySuccess(null);
     }
 
     @Override
@@ -62,6 +62,12 @@ public class DefaultChannelPromise extends DefaultPromise<Void> implements Chann
             return e;
         }
     }
+
+
+
+
+
+
 
     @Override
     public Channel channel() {
@@ -77,11 +83,6 @@ public class DefaultChannelPromise extends DefaultPromise<Void> implements Chann
     public ChannelPromise setSuccess(Void result) {
         super.setSuccess(result);
         return this;
-    }
-
-    @Override
-    public boolean trySuccess() {
-        return trySuccess(null);
     }
 
     @Override

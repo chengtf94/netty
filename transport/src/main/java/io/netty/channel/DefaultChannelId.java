@@ -32,28 +32,22 @@ import static io.netty.util.internal.MacAddressUtil.defaultMachineId;
 import static io.netty.util.internal.MacAddressUtil.parseMAC;
 
 /**
- * The default {@link ChannelId} implementation.
+ * 默认Channel全局唯一ID：类似于SnowFlake雪花算法
  */
 public final class DefaultChannelId implements ChannelId {
-
     private static final long serialVersionUID = 3884076183504074063L;
-
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(DefaultChannelId.class);
+
+    /**
+     * 机器ID、进程ID长度、进程ID、序列号长度、时间戳长度、随机数长度、下一个序列号
+     */
     private static final byte[] MACHINE_ID;
     private static final int PROCESS_ID_LEN = 4;
     private static final int PROCESS_ID;
     private static final int SEQUENCE_LEN = 4;
     private static final int TIMESTAMP_LEN = 8;
     private static final int RANDOM_LEN = 4;
-
     private static final AtomicInteger nextSequence = new AtomicInteger();
-
-    /**
-     * Returns a new {@link DefaultChannelId} instance.
-     */
-    public static DefaultChannelId newInstance() {
-        return new DefaultChannelId();
-    }
 
     static {
         int processId = -1;
@@ -105,6 +99,9 @@ public final class DefaultChannelId implements ChannelId {
         MACHINE_ID = machineId;
     }
 
+    /**
+     * 获取默认进程ID
+     */
     private static int defaultProcessId() {
         ClassLoader loader = null;
         String value;
@@ -152,11 +149,20 @@ public final class DefaultChannelId implements ChannelId {
         return pid;
     }
 
+    /**
+     * 数据、哈希值
+     */
     private final byte[] data;
     private final int hashCode;
-
     private transient String shortValue;
     private transient String longValue;
+
+    /**
+     * 获取DefaultChannelId实例
+     */
+    public static DefaultChannelId newInstance() {
+        return new DefaultChannelId();
+    }
 
     private DefaultChannelId() {
         data = new byte[MACHINE_ID.length + PROCESS_ID_LEN + SEQUENCE_LEN + TIMESTAMP_LEN + RANDOM_LEN];

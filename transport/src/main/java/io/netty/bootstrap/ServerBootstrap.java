@@ -130,53 +130,6 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         return this;
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-    @Override
-    void init(Channel channel) {
-        setChannelOptions(channel, newOptionsArray(), logger);
-        setAttributes(channel, attrs0().entrySet().toArray(EMPTY_ATTRIBUTE_ARRAY));
-
-        ChannelPipeline p = channel.pipeline();
-
-        final EventLoopGroup currentChildGroup = childGroup;
-        final ChannelHandler currentChildHandler = childHandler;
-        final Entry<ChannelOption<?>, Object>[] currentChildOptions;
-        synchronized (childOptions) {
-            currentChildOptions = childOptions.entrySet().toArray(EMPTY_OPTION_ARRAY);
-        }
-        final Entry<AttributeKey<?>, Object>[] currentChildAttrs = childAttrs.entrySet().toArray(EMPTY_ATTRIBUTE_ARRAY);
-
-        p.addLast(new ChannelInitializer<Channel>() {
-            @Override
-            public void initChannel(final Channel ch) {
-                final ChannelPipeline pipeline = ch.pipeline();
-                ChannelHandler handler = config.handler();
-                if (handler != null) {
-                    pipeline.addLast(handler);
-                }
-
-                ch.eventLoop().execute(new Runnable() {
-                    @Override
-                    public void run() {
-                        pipeline.addLast(new ServerBootstrapAcceptor(
-                                ch, currentChildGroup, currentChildHandler, currentChildOptions, currentChildAttrs));
-                    }
-                });
-            }
-        });
-    }
-
     @Override
     public ServerBootstrap validate() {
         super.validate();
@@ -190,14 +143,64 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         return this;
     }
 
-    private static class ServerBootstrapAcceptor extends ChannelInboundHandlerAdapter {
+    /**
+     * 初始化NIOServerSocketChannel
+     */
+    @Override
+    void init(Channel channel) {
+        // 设置ChannelOptions
+        setChannelOptions(channel, newOptionsArray(), logger);
+        // 设置attributes
+        setAttributes(channel, attrs0().entrySet().toArray(EMPTY_ATTRIBUTE_ARRAY));
+        // 获取从Reactor线程组、以及对应的配置项，用于初始化ServerBootstrapAcceptor
+        final EventLoopGroup currentChildGroup = childGroup;
+        final ChannelHandler currentChildHandler = childHandler;
+        final Entry<ChannelOption<?>, Object>[] currentChildOptions;
+        synchronized (childOptions) {
+            currentChildOptions = childOptions.entrySet().toArray(EMPTY_OPTION_ARRAY);
+        }
+        final Entry<AttributeKey<?>, Object>[] currentChildAttrs = childAttrs.entrySet().toArray(EMPTY_ATTRIBUTE_ARRAY);
+        // 向NioServerSocketChannel中的pipeline添加初始化ChannelHandler的逻辑
+        ChannelPipeline p = channel.pipeline();
+        p.addLast(new ChannelInitializer<Channel>() {
+            @Override
+            public void initChannel(final Channel ch) {
+                final ChannelPipeline pipeline = ch.pipeline();
+                // 1）添加ServerBootstrap中用户指定的channelHandler
+                ChannelHandler handler = config.handler();
+                if (handler != null) {
+                    pipeline.addLast(handler);
+                }
+                // 2）添加用于接收客户端连接的ServerBootstrapAcceptor（负责接收客户端连接以及创建NioServerChannel）
+                ch.eventLoop().execute(new Runnable() {
+                    @Override
+                    public void run() {
+                        pipeline.addLast(new ServerBootstrapAcceptor(
+                                ch, currentChildGroup, currentChildHandler, currentChildOptions, currentChildAttrs));
+                    }
+                });
+            }
+        });
+    }
 
+    /**
+     * ServerBootstrapAcceptor：负责接收客户端连接以及创建NioServerChannel，由主Reactor线程负责执行
+     * 1）为了保证线程安全地初始化pipeline，所以初始化的动作需要由Reactor线程进行，而用户程序的启动Main线程不能立即初始化。
+     * 2）初始化Channel中pipeline的动作，需要等到Channel注册到对应的Reactor中才可以进行初始化
+     */
+    private static class ServerBootstrapAcceptor extends ChannelInboundHandlerAdapter {
+        /**
+         * 从Reactor组、childHandler、childOptions、childAttrs
+         */
         private final EventLoopGroup childGroup;
         private final ChannelHandler childHandler;
         private final Entry<ChannelOption<?>, Object>[] childOptions;
         private final Entry<AttributeKey<?>, Object>[] childAttrs;
         private final Runnable enableAutoReadTask;
 
+        /**
+         * 构造方法
+         */
         ServerBootstrapAcceptor(
                 final Channel channel, EventLoopGroup childGroup, ChannelHandler childHandler,
                 Entry<ChannelOption<?>, Object>[] childOptions, Entry<AttributeKey<?>, Object>[] childAttrs) {
@@ -205,11 +208,9 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             this.childHandler = childHandler;
             this.childOptions = childOptions;
             this.childAttrs = childAttrs;
-
             // Task which is scheduled to re-enable auto-read.
             // It's important to create this Runnable before we try to submit it as otherwise the URLClassLoader may
             // not be able to load the class because of the file limit it already reached.
-            //
             // See https://github.com/netty/netty/issues/1328
             enableAutoReadTask = new Runnable() {
                 @Override
@@ -264,6 +265,27 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
     }
 
     @Override
+    public final ServerBootstrapConfig config() {
+        return config;
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    @Override
     @SuppressWarnings("CloneDoesntCallSuperClone")
     public ServerBootstrap clone() {
         return new ServerBootstrap(this);
@@ -294,8 +316,5 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         return copiedMap(childAttrs);
     }
 
-    @Override
-    public final ServerBootstrapConfig config() {
-        return config;
-    }
+
 }

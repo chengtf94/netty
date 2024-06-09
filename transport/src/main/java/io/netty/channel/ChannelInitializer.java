@@ -33,11 +33,59 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(ChannelInitializer.class);
 
     /**
-     * We use a Set as a ChannelInitializer is usually shared between all Channels in a Bootstrap /
-     * ServerBootstrap. This way we can reduce the memory usage compared to use Attributes.
+     * ChannelInitializer实例是被所有的Channel共享的，用于初始化ChannelPipeline
+     * initMap：通过Set集合保存已经初始化的ChannelPipeline，避免重复初始化同一ChannelPipeline
      */
-    private final Set<ChannelHandlerContext> initMap = Collections.newSetFromMap(
-            new ConcurrentHashMap<ChannelHandlerContext, Boolean>());
+    private final Set<ChannelHandlerContext> initMap = Collections.newSetFromMap(new ConcurrentHashMap<ChannelHandlerContext, Boolean>());
+
+    @Override
+    public void handlerAdded(ChannelHandlerContext ctx) throws Exception {
+        if (ctx.channel().isRegistered()) {
+            // 初始化工作完成后，需要将自身从pipeline中移除
+            if (initChannel(ctx)) {
+                removeState(ctx);
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private boolean initChannel(ChannelHandlerContext ctx) throws Exception {
+        if (initMap.add(ctx)) { // Guard against re-entrance.
+            try {
+                // 此时客户端NioSocketChannel已经创建并初始化好了
+                initChannel((C) ctx.channel());
+            } catch (Throwable cause) {
+                exceptionCaught(ctx, cause);
+            } finally {
+                // 初始化完毕后，从pipeline中移除自身：当执行完initChannel 方法后，ChannelPipeline的初始化就结束了，此时就没必要再继续呆在pipeline中了
+                ChannelPipeline pipeline = ctx.pipeline();
+                if (pipeline.context(this) != null) {
+                    pipeline.remove(this);
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 匿名类实现，这里指定具体的初始化逻辑
+     */
+    protected abstract void initChannel(C ch) throws Exception;
+
+    private void removeState(final ChannelHandlerContext ctx) {
+        // 从initMap防重Set集合中删除ChannelInitializer
+        if (ctx.isRemoved()) {
+            initMap.remove(ctx);
+        } else {
+            ctx.executor().execute(new Runnable() {
+                @Override
+                public void run() {
+                    initMap.remove(ctx);
+                }
+            });
+        }
+    }
 
     @Override
     @SuppressWarnings("unchecked")
@@ -52,52 +100,9 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private boolean initChannel(ChannelHandlerContext ctx) throws Exception {
-        if (initMap.add(ctx)) { // Guard against re-entrance.
-            try {
-                // 此时客户单NioSocketChannel已经创建并初始化好了
-                initChannel((C) ctx.channel());
-            } catch (Throwable cause) {
-                exceptionCaught(ctx, cause);
-            } finally {
-                // 处理完成后移除自身
-                ChannelPipeline pipeline = ctx.pipeline();
-                if (pipeline.context(this) != null) {
-                    pipeline.remove(this);
-                }
-            }
-            return true;
-        }
-        return false;
-    }
 
-    /**
-     * This method will be called once the {@link Channel} was registered. After the method returns this instance
-     * will be removed from the {@link ChannelPipeline} of the {@link Channel}.
-     *
-     * @param ch            the {@link Channel} which was registered.
-     * @throws Exception    is thrown if an error occurs. In that case it will be handled by
-     *                      {@link #exceptionCaught(ChannelHandlerContext, Throwable)} which will by default close
-     *                      the {@link Channel}.
-     */
-    protected abstract void initChannel(C ch) throws Exception;
 
-    private void removeState(final ChannelHandlerContext ctx) {
-        // The removal may happen in an async fashion if the EventExecutor we use does something funky.
-        if (ctx.isRemoved()) {
-            initMap.remove(ctx);
-        } else {
-            // The context is not removed yet which is most likely the case because a custom EventExecutor is used.
-            // Let's schedule it on the EventExecutor to give it some more time to be completed in case it is offloaded.
-            ctx.executor().execute(new Runnable() {
-                @Override
-                public void run() {
-                    initMap.remove(ctx);
-                }
-            });
-        }
-    }
+
 
 
 
@@ -113,23 +118,7 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
         ctx.close();
     }
 
-    /**
-     * {@inheritDoc} If override this method ensure you call super!
-     */
-    @Override
-    public void handlerAdded(ChannelHandlerContext ctx) throws Exception {
-        if (ctx.channel().isRegistered()) {
-            // This should always be true with our current DefaultChannelPipeline implementation.
-            // The good thing about calling initChannel(...) in handlerAdded(...) is that there will be no ordering
-            // surprises if a ChannelInitializer will add another ChannelInitializer. This is as all handlers
-            // will be added in the expected order.
-            if (initChannel(ctx)) {
 
-                // We are done with init the Channel, removing the initializer now.
-                removeState(ctx);
-            }
-        }
-    }
 
     @Override
     public void handlerRemoved(ChannelHandlerContext ctx) throws Exception {

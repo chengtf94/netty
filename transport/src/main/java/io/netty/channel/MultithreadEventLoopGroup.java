@@ -47,16 +47,16 @@ public abstract class MultithreadEventLoopGroup extends MultithreadEventExecutor
     }
 
     @Override
-    public EventLoop next() {
-        return (EventLoop) super.next();
-    }
-
-    @Override
     protected abstract EventLoop newChild(Executor executor, Object... args) throws Exception;
 
     @Override
     public ChannelFuture register(Channel channel) {
         return next().register(channel);
+    }
+
+    @Override
+    public EventLoop next() {
+        return (EventLoop) super.next();
     }
 
     @Override

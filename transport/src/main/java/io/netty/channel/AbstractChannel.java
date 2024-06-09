@@ -44,17 +44,32 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(AbstractChannel.class);
 
     /**
-     * 父Channel、
+     * 父Channel：Channel是有创建层次的，例如ServerSocketChannel 是 SocketChannel的 parent
      */
     private final Channel parent;
+    /**
+     * 全局唯一ID：machineId + processId + sequence + timestamp + random
+     */
     private final ChannelId id;
+    /**
+     * unsafe：用于封装对底层socket的相关操作
+     */
     private final Unsafe unsafe;
+    /**
+     * pipeline：为channel分配独立的pipeline用于IO事件编排
+     */
     private final DefaultChannelPipeline pipeline;
     private final VoidChannelPromise unsafeVoidPromise = new VoidChannelPromise(this, false);
     private final CloseFuture closeFuture = new CloseFuture(this);
     private volatile SocketAddress localAddress;
     private volatile SocketAddress remoteAddress;
+    /**
+     * 负责当前Channel的某个Reactor
+     */
     private volatile EventLoop eventLoop;
+    /**
+     * 是否已注册当前Channel到某个Reactor上
+     */
     private volatile boolean registered;
     private boolean closeInitiated;
     private Throwable initialCloseCause;
@@ -72,123 +87,31 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         unsafe = newUnsafe();
         pipeline = newChannelPipeline();
     }
+
     protected AbstractChannel(Channel parent, ChannelId id) {
         this.parent = parent;
         this.id = id;
         unsafe = newUnsafe();
         pipeline = newChannelPipeline();
     }
+
+    /**
+     * 创建Channel的全局唯一ID
+     */
     protected ChannelId newId() {
         return DefaultChannelId.newInstance();
     }
+
+    /**
+     * 创建Channel的unsafe
+     */
     protected abstract AbstractUnsafe newUnsafe();
+
+    /**
+     * 创建Channel的pipeline
+     */
     protected DefaultChannelPipeline newChannelPipeline() {
         return new DefaultChannelPipeline(this);
-    }
-
-
-
-
-
-
-
-    @Override
-    public final ChannelId id() {
-        return id;
-    }
-
-    @Override
-    public boolean isWritable() {
-        ChannelOutboundBuffer buf = unsafe.outboundBuffer();
-        return buf != null && buf.isWritable();
-    }
-
-    @Override
-    public long bytesBeforeUnwritable() {
-        ChannelOutboundBuffer buf = unsafe.outboundBuffer();
-        // isWritable() is currently assuming if there is no outboundBuffer then the channel is not writable.
-        // We should be consistent with that here.
-        return buf != null ? buf.bytesBeforeUnwritable() : 0;
-    }
-
-    @Override
-    public long bytesBeforeWritable() {
-        ChannelOutboundBuffer buf = unsafe.outboundBuffer();
-        // isWritable() is currently assuming if there is no outboundBuffer then the channel is not writable.
-        // We should be consistent with that here.
-        return buf != null ? buf.bytesBeforeWritable() : Long.MAX_VALUE;
-    }
-
-    @Override
-    public Channel parent() {
-        return parent;
-    }
-
-    @Override
-    public ChannelPipeline pipeline() {
-        return pipeline;
-    }
-
-    @Override
-    public ByteBufAllocator alloc() {
-        return config().getAllocator();
-    }
-
-    @Override
-    public EventLoop eventLoop() {
-        EventLoop eventLoop = this.eventLoop;
-        if (eventLoop == null) {
-            throw new IllegalStateException("channel not registered to an event loop");
-        }
-        return eventLoop;
-    }
-
-    @Override
-    public SocketAddress localAddress() {
-        SocketAddress localAddress = this.localAddress;
-        if (localAddress == null) {
-            try {
-                this.localAddress = localAddress = unsafe().localAddress();
-            } catch (Error e) {
-                throw e;
-            } catch (Throwable t) {
-                // Sometimes fails on a closed socket in Windows.
-                return null;
-            }
-        }
-        return localAddress;
-    }
-
-    /**
-     * @deprecated no use-case for this.
-     */
-    @Deprecated
-    protected void invalidateLocalAddress() {
-        localAddress = null;
-    }
-
-    @Override
-    public SocketAddress remoteAddress() {
-        SocketAddress remoteAddress = this.remoteAddress;
-        if (remoteAddress == null) {
-            try {
-                this.remoteAddress = remoteAddress = unsafe().remoteAddress();
-            } catch (Error e) {
-                throw e;
-            } catch (Throwable t) {
-                // Sometimes fails on a closed socket in Windows.
-                return null;
-            }
-        }
-        return remoteAddress;
-    }
-
-    /**
-     * @deprecated no use-case for this.
-     */
-    @Deprecated
-    protected void invalidateRemoteAddress() {
-        remoteAddress = null;
     }
 
     @Override
@@ -196,220 +119,127 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         return registered;
     }
 
-    @Override
-    public ChannelFuture bind(SocketAddress localAddress) {
-        return pipeline.bind(localAddress);
-    }
-
-    @Override
-    public ChannelFuture connect(SocketAddress remoteAddress) {
-        return pipeline.connect(remoteAddress);
-    }
-
-    @Override
-    public ChannelFuture connect(SocketAddress remoteAddress, SocketAddress localAddress) {
-        return pipeline.connect(remoteAddress, localAddress);
-    }
-
-    @Override
-    public ChannelFuture disconnect() {
-        return pipeline.disconnect();
-    }
-
-    @Override
-    public ChannelFuture close() {
-        return pipeline.close();
-    }
-
-    @Override
-    public ChannelFuture deregister() {
-        return pipeline.deregister();
-    }
-
-    @Override
-    public Channel flush() {
-        pipeline.flush();
-        return this;
-    }
-
-    @Override
-    public ChannelFuture bind(SocketAddress localAddress, ChannelPromise promise) {
-        return pipeline.bind(localAddress, promise);
-    }
-
-    @Override
-    public ChannelFuture connect(SocketAddress remoteAddress, ChannelPromise promise) {
-        return pipeline.connect(remoteAddress, promise);
-    }
-
-    @Override
-    public ChannelFuture connect(SocketAddress remoteAddress, SocketAddress localAddress, ChannelPromise promise) {
-        return pipeline.connect(remoteAddress, localAddress, promise);
-    }
-
-    @Override
-    public ChannelFuture disconnect(ChannelPromise promise) {
-        return pipeline.disconnect(promise);
-    }
-
-    @Override
-    public ChannelFuture close(ChannelPromise promise) {
-        return pipeline.close(promise);
-    }
-
-    @Override
-    public ChannelFuture deregister(ChannelPromise promise) {
-        return pipeline.deregister(promise);
-    }
-
-    @Override
-    public Channel read() {
-        pipeline.read();
-        return this;
-    }
-
-    @Override
-    public ChannelFuture write(Object msg) {
-        return pipeline.write(msg);
-    }
-
-    @Override
-    public ChannelFuture write(Object msg, ChannelPromise promise) {
-        return pipeline.write(msg, promise);
-    }
-
-    @Override
-    public ChannelFuture writeAndFlush(Object msg) {
-        return pipeline.writeAndFlush(msg);
-    }
-
-    @Override
-    public ChannelFuture writeAndFlush(Object msg, ChannelPromise promise) {
-        return pipeline.writeAndFlush(msg, promise);
-    }
-
-    @Override
-    public ChannelPromise newPromise() {
-        return pipeline.newPromise();
-    }
-
-    @Override
-    public ChannelProgressivePromise newProgressivePromise() {
-        return pipeline.newProgressivePromise();
-    }
-
-    @Override
-    public ChannelFuture newSucceededFuture() {
-        return pipeline.newSucceededFuture();
-    }
-
-    @Override
-    public ChannelFuture newFailedFuture(Throwable cause) {
-        return pipeline.newFailedFuture(cause);
-    }
-
-    @Override
-    public ChannelFuture closeFuture() {
-        return closeFuture;
-    }
-
-    @Override
-    public Unsafe unsafe() {
-        return unsafe;
-    }
-
-
     /**
-     * Returns the ID of this channel.
+     * 是否兼容
      */
-    @Override
-    public final int hashCode() {
-        return id.hashCode();
-    }
+    protected abstract boolean isCompatible(EventLoop loop);
 
     /**
-     * Returns {@code true} if and only if the specified object is identical
-     * with this channel (i.e: {@code this == o}).
+     * 向Reactor注册Channel
      */
-    @Override
-    public final boolean equals(Object o) {
-        return this == o;
-    }
-
-    @Override
-    public final int compareTo(Channel o) {
-        if (this == o) {
-            return 0;
-        }
-
-        return id().compareTo(o.id());
+    protected void doRegister() throws Exception {
+        // NOOP
     }
 
     /**
-     * Returns the {@link String} representation of this channel.  The returned
-     * string contains the {@linkplain #hashCode() ID}, {@linkplain #localAddress() local address},
-     * and {@linkplain #remoteAddress() remote address} of this channel for
-     * easier identification.
-     */
-    @Override
-    public String toString() {
-        boolean active = isActive();
-        if (strValActive == active && strVal != null) {
-            return strVal;
-        }
-
-        SocketAddress remoteAddr = remoteAddress();
-        SocketAddress localAddr = localAddress();
-        if (remoteAddr != null) {
-            StringBuilder buf = new StringBuilder(96)
-                .append("[id: 0x")
-                .append(id.asShortText())
-                .append(", L:")
-                .append(localAddr)
-                .append(active? " - " : " ! ")
-                .append("R:")
-                .append(remoteAddr)
-                .append(']');
-            strVal = buf.toString();
-        } else if (localAddr != null) {
-            StringBuilder buf = new StringBuilder(64)
-                .append("[id: 0x")
-                .append(id.asShortText())
-                .append(", L:")
-                .append(localAddr)
-                .append(']');
-            strVal = buf.toString();
-        } else {
-            StringBuilder buf = new StringBuilder(16)
-                .append("[id: 0x")
-                .append(id.asShortText())
-                .append(']');
-            strVal = buf.toString();
-        }
-
-        strValActive = active;
-        return strVal;
-    }
-
-    @Override
-    public final ChannelPromise voidPromise() {
-        return pipeline.voidPromise();
-    }
-
-    /**
-     * {@link Unsafe} implementation which sub-classes must extend and use.
+     * AbstractUnsafe
      */
     protected abstract class AbstractUnsafe implements Unsafe {
 
         private volatile ChannelOutboundBuffer outboundBuffer = new ChannelOutboundBuffer(AbstractChannel.this);
         private RecvByteBufAllocator.Handle recvHandle;
         private boolean inFlush0;
-        /** true if the channel has never been registered, false otherwise */
+        /** 是否从来没注册过*/
         private boolean neverRegistered = true;
 
         private void assertEventLoop() {
             assert !registered || eventLoop.inEventLoop();
         }
+
+        /**
+         * 向Reactor注册Channel
+         */
+        @Override
+        public final void register(EventLoop eventLoop, final ChannelPromise promise) {
+            ObjectUtil.checkNotNull(eventLoop, "eventLoop");
+            if (isRegistered()) {
+                promise.setFailure(new IllegalStateException("registered to an event loop already"));
+                return;
+            }
+            if (!isCompatible(eventLoop)) {
+                promise.setFailure(
+                        new IllegalStateException("incompatible event loop type: " + eventLoop.getClass().getName()));
+                return;
+            }
+            // #1 在channel上设置绑定的Reactor
+            AbstractChannel.this.eventLoop = eventLoop;
+            // #2 执行channel注册的操作必须是Reactor线程来完成：若当前线程是Reactor线程，则直接执行register0进行注册，
+            // 否则需要将register0注册操作 封装程异步Task 由Reactor线程执行
+            if (eventLoop.inEventLoop()) {
+                // #2.1 当前线程是Reactor线程则直接执行注册动作register0
+                register0(promise);
+            } else {
+                // #2.2 当前线程不是Reactor线程，则需要将注册动作register0封装成异步任务，存放在Reactor中的taskQueue中，等待Reactor线程执行
+                // 注意：Reactor线程的启动是在向Reactor提交第一个异步任务的时候启动的，该处是第一个异步任务
+                try {
+                    eventLoop.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            register0(promise);
+                        }
+                    });
+                } catch (Throwable t) {
+                    logger.warn(
+                            "Force-closing a channel whose registration task was not accepted by an event loop: {}",
+                            AbstractChannel.this, t);
+                    closeForcibly();
+                    closeFuture.setClosed();
+                    safeSetFailure(promise, t);
+                }
+            }
+        }
+
+        /**
+         * 向Reactor注册Channel
+         */
+        private void register0(ChannelPromise promise) {
+            try {
+                // 查看注册操作是否已经取消，或者对应channel已经关闭
+                if (!promise.setUncancellable() || !ensureOpen(promise)) {
+                    return;
+                }
+                boolean firstRegistration = neverRegistered;
+                // 执行真正的注册操作
+                doRegister();
+                neverRegistered = false;
+                registered = true;
+                // 回调pipeline中添加的ChannelInitializer的handlerAdded方法，在这里初始化channelPipeline
+                pipeline.invokeHandlerAddedIfNeeded();
+                // 设置regFuture为success，触发operationComplete回调，将bind操作放入Reactor的任务队列中，等待Reactor线程执行
+                safeSetSuccess(promise);
+                // 触发channelRegister事件
+                pipeline.fireChannelRegistered();
+                // 对于服务端ServerSocketChannel来说 只有绑定端口地址成功后 channel的状态才是active的。
+                // 此时绑定操作作为异步任务在Reactor的任务队列中，绑定操作还没开始，所以这里的isActive()是false
+                if (isActive()) {
+                    if (firstRegistration) {
+                        pipeline.fireChannelActive();
+                    } else if (config().isAutoRead()) {
+                        beginRead();
+                    }
+                }
+            } catch (Throwable t) {
+                // Close the channel directly to avoid FD leak.
+                closeForcibly();
+                closeFuture.setClosed();
+                safeSetFailure(promise, t);
+            }
+        }
+
+        protected final void safeSetSuccess(ChannelPromise promise) {
+            if (!(promise instanceof VoidChannelPromise) && !promise.trySuccess()) {
+                logger.warn("Failed to mark a promise as success because it is done already: {}", promise);
+            }
+        }
+
+
+
+
+
+
+
+
+
 
         @Override
         public RecvByteBufAllocator.Handle recvBufAllocHandle() {
@@ -435,81 +265,6 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         }
 
         @Override
-        public final void register(EventLoop eventLoop, final ChannelPromise promise) {
-            ObjectUtil.checkNotNull(eventLoop, "eventLoop");
-            if (isRegistered()) {
-                promise.setFailure(new IllegalStateException("registered to an event loop already"));
-                return;
-            }
-            if (!isCompatible(eventLoop)) {
-                promise.setFailure(
-                        new IllegalStateException("incompatible event loop type: " + eventLoop.getClass().getName()));
-                return;
-            }
-
-            AbstractChannel.this.eventLoop = eventLoop;
-
-            if (eventLoop.inEventLoop()) {
-                register0(promise);
-            } else {
-                try {
-                    eventLoop.execute(new Runnable() {
-                        @Override
-                        public void run() {
-                            register0(promise);
-                        }
-                    });
-                } catch (Throwable t) {
-                    logger.warn(
-                            "Force-closing a channel whose registration task was not accepted by an event loop: {}",
-                            AbstractChannel.this, t);
-                    closeForcibly();
-                    closeFuture.setClosed();
-                    safeSetFailure(promise, t);
-                }
-            }
-        }
-
-        private void register0(ChannelPromise promise) {
-            try {
-                // check if the channel is still open as it could be closed in the mean time when the register
-                // call was outside of the eventLoop
-                if (!promise.setUncancellable() || !ensureOpen(promise)) {
-                    return;
-                }
-                boolean firstRegistration = neverRegistered;
-                doRegister();
-                neverRegistered = false;
-                registered = true;
-
-                // Ensure we call handlerAdded(...) before we actually notify the promise. This is needed as the
-                // user may already fire events through the pipeline in the ChannelFutureListener.
-                pipeline.invokeHandlerAddedIfNeeded();
-
-                safeSetSuccess(promise);
-                pipeline.fireChannelRegistered();
-                // Only fire a channelActive if the channel has never been registered. This prevents firing
-                // multiple channel actives if the channel is deregistered and re-registered.
-                if (isActive()) {
-                    if (firstRegistration) {
-                        pipeline.fireChannelActive();
-                    } else if (config().isAutoRead()) {
-                        // This channel was registered before and autoRead() is set. This means we need to begin read
-                        // again so that we process inbound data.
-                        //
-                        // See https://github.com/netty/netty/issues/4805
-                        beginRead();
-                    }
-                }
-            } catch (Throwable t) {
-                // Close the channel directly to avoid FD leak.
-                closeForcibly();
-                closeFuture.setClosed();
-                safeSetFailure(promise, t);
-            }
-        }
-
-        @Override
         public final void bind(final SocketAddress localAddress, final ChannelPromise promise) {
             assertEventLoop();
 
@@ -519,15 +274,15 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
             // See: https://github.com/netty/netty/issues/576
             if (Boolean.TRUE.equals(config().getOption(ChannelOption.SO_BROADCAST)) &&
-                localAddress instanceof InetSocketAddress &&
-                !((InetSocketAddress) localAddress).getAddress().isAnyLocalAddress() &&
-                !PlatformDependent.isWindows() && !PlatformDependent.maybeSuperUser()) {
+                    localAddress instanceof InetSocketAddress &&
+                    !((InetSocketAddress) localAddress).getAddress().isAnyLocalAddress() &&
+                    !PlatformDependent.isWindows() && !PlatformDependent.maybeSuperUser()) {
                 // Warn a user about the fact that a non-root user can't receive a
                 // broadcast packet on *nix if the socket is bound on non-wildcard address.
                 logger.warn(
                         "A non-root user can't receive a broadcast packet if the socket " +
-                        "is not bound to a wildcard address; binding to a non-wildcard " +
-                        "address (" + localAddress + ") anyway as requested.");
+                                "is not bound to a wildcard address; binding to a non-wildcard " +
+                                "address (" + localAddress + ") anyway as requested.");
             }
 
             boolean wasActive = isActive();
@@ -979,15 +734,6 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         }
 
         /**
-         * Marks the specified {@code promise} as success.  If the {@code promise} is done already, log a message.
-         */
-        protected final void safeSetSuccess(ChannelPromise promise) {
-            if (!(promise instanceof VoidChannelPromise) && !promise.trySuccess()) {
-                logger.warn("Failed to mark a promise as success because it is done already: {}", promise);
-            }
-        }
-
-        /**
          * Marks the specified {@code promise} as failure.  If the {@code promise} is done already, log a message.
          */
         protected final void safeSetFailure(ChannelPromise promise, Throwable cause) {
@@ -1050,10 +796,325 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         }
     }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    @Override
+    public final ChannelId id() {
+        return id;
+    }
+
+    @Override
+    public boolean isWritable() {
+        ChannelOutboundBuffer buf = unsafe.outboundBuffer();
+        return buf != null && buf.isWritable();
+    }
+
+    @Override
+    public long bytesBeforeUnwritable() {
+        ChannelOutboundBuffer buf = unsafe.outboundBuffer();
+        // isWritable() is currently assuming if there is no outboundBuffer then the channel is not writable.
+        // We should be consistent with that here.
+        return buf != null ? buf.bytesBeforeUnwritable() : 0;
+    }
+
+    @Override
+    public long bytesBeforeWritable() {
+        ChannelOutboundBuffer buf = unsafe.outboundBuffer();
+        // isWritable() is currently assuming if there is no outboundBuffer then the channel is not writable.
+        // We should be consistent with that here.
+        return buf != null ? buf.bytesBeforeWritable() : Long.MAX_VALUE;
+    }
+
+    @Override
+    public Channel parent() {
+        return parent;
+    }
+
+    @Override
+    public ChannelPipeline pipeline() {
+        return pipeline;
+    }
+
+    @Override
+    public ByteBufAllocator alloc() {
+        return config().getAllocator();
+    }
+
+    @Override
+    public EventLoop eventLoop() {
+        EventLoop eventLoop = this.eventLoop;
+        if (eventLoop == null) {
+            throw new IllegalStateException("channel not registered to an event loop");
+        }
+        return eventLoop;
+    }
+
+    @Override
+    public SocketAddress localAddress() {
+        SocketAddress localAddress = this.localAddress;
+        if (localAddress == null) {
+            try {
+                this.localAddress = localAddress = unsafe().localAddress();
+            } catch (Error e) {
+                throw e;
+            } catch (Throwable t) {
+                // Sometimes fails on a closed socket in Windows.
+                return null;
+            }
+        }
+        return localAddress;
+    }
+
     /**
-     * Return {@code true} if the given {@link EventLoop} is compatible with this instance.
+     * @deprecated no use-case for this.
      */
-    protected abstract boolean isCompatible(EventLoop loop);
+    @Deprecated
+    protected void invalidateLocalAddress() {
+        localAddress = null;
+    }
+
+    @Override
+    public SocketAddress remoteAddress() {
+        SocketAddress remoteAddress = this.remoteAddress;
+        if (remoteAddress == null) {
+            try {
+                this.remoteAddress = remoteAddress = unsafe().remoteAddress();
+            } catch (Error e) {
+                throw e;
+            } catch (Throwable t) {
+                // Sometimes fails on a closed socket in Windows.
+                return null;
+            }
+        }
+        return remoteAddress;
+    }
+
+    /**
+     * @deprecated no use-case for this.
+     */
+    @Deprecated
+    protected void invalidateRemoteAddress() {
+        remoteAddress = null;
+    }
+
+
+
+    @Override
+    public ChannelFuture bind(SocketAddress localAddress) {
+        return pipeline.bind(localAddress);
+    }
+
+    @Override
+    public ChannelFuture connect(SocketAddress remoteAddress) {
+        return pipeline.connect(remoteAddress);
+    }
+
+    @Override
+    public ChannelFuture connect(SocketAddress remoteAddress, SocketAddress localAddress) {
+        return pipeline.connect(remoteAddress, localAddress);
+    }
+
+    @Override
+    public ChannelFuture disconnect() {
+        return pipeline.disconnect();
+    }
+
+    @Override
+    public ChannelFuture close() {
+        return pipeline.close();
+    }
+
+    @Override
+    public ChannelFuture deregister() {
+        return pipeline.deregister();
+    }
+
+    @Override
+    public Channel flush() {
+        pipeline.flush();
+        return this;
+    }
+
+    @Override
+    public ChannelFuture bind(SocketAddress localAddress, ChannelPromise promise) {
+        return pipeline.bind(localAddress, promise);
+    }
+
+    @Override
+    public ChannelFuture connect(SocketAddress remoteAddress, ChannelPromise promise) {
+        return pipeline.connect(remoteAddress, promise);
+    }
+
+    @Override
+    public ChannelFuture connect(SocketAddress remoteAddress, SocketAddress localAddress, ChannelPromise promise) {
+        return pipeline.connect(remoteAddress, localAddress, promise);
+    }
+
+    @Override
+    public ChannelFuture disconnect(ChannelPromise promise) {
+        return pipeline.disconnect(promise);
+    }
+
+    @Override
+    public ChannelFuture close(ChannelPromise promise) {
+        return pipeline.close(promise);
+    }
+
+    @Override
+    public ChannelFuture deregister(ChannelPromise promise) {
+        return pipeline.deregister(promise);
+    }
+
+    @Override
+    public Channel read() {
+        pipeline.read();
+        return this;
+    }
+
+    @Override
+    public ChannelFuture write(Object msg) {
+        return pipeline.write(msg);
+    }
+
+    @Override
+    public ChannelFuture write(Object msg, ChannelPromise promise) {
+        return pipeline.write(msg, promise);
+    }
+
+    @Override
+    public ChannelFuture writeAndFlush(Object msg) {
+        return pipeline.writeAndFlush(msg);
+    }
+
+    @Override
+    public ChannelFuture writeAndFlush(Object msg, ChannelPromise promise) {
+        return pipeline.writeAndFlush(msg, promise);
+    }
+
+    @Override
+    public ChannelPromise newPromise() {
+        return pipeline.newPromise();
+    }
+
+    @Override
+    public ChannelProgressivePromise newProgressivePromise() {
+        return pipeline.newProgressivePromise();
+    }
+
+    @Override
+    public ChannelFuture newSucceededFuture() {
+        return pipeline.newSucceededFuture();
+    }
+
+    @Override
+    public ChannelFuture newFailedFuture(Throwable cause) {
+        return pipeline.newFailedFuture(cause);
+    }
+
+    @Override
+    public ChannelFuture closeFuture() {
+        return closeFuture;
+    }
+
+    @Override
+    public Unsafe unsafe() {
+        return unsafe;
+    }
+
+
+    /**
+     * Returns the ID of this channel.
+     */
+    @Override
+    public final int hashCode() {
+        return id.hashCode();
+    }
+
+    /**
+     * Returns {@code true} if and only if the specified object is identical
+     * with this channel (i.e: {@code this == o}).
+     */
+    @Override
+    public final boolean equals(Object o) {
+        return this == o;
+    }
+
+    @Override
+    public final int compareTo(Channel o) {
+        if (this == o) {
+            return 0;
+        }
+
+        return id().compareTo(o.id());
+    }
+
+    /**
+     * Returns the {@link String} representation of this channel.  The returned
+     * string contains the {@linkplain #hashCode() ID}, {@linkplain #localAddress() local address},
+     * and {@linkplain #remoteAddress() remote address} of this channel for
+     * easier identification.
+     */
+    @Override
+    public String toString() {
+        boolean active = isActive();
+        if (strValActive == active && strVal != null) {
+            return strVal;
+        }
+
+        SocketAddress remoteAddr = remoteAddress();
+        SocketAddress localAddr = localAddress();
+        if (remoteAddr != null) {
+            StringBuilder buf = new StringBuilder(96)
+                .append("[id: 0x")
+                .append(id.asShortText())
+                .append(", L:")
+                .append(localAddr)
+                .append(active? " - " : " ! ")
+                .append("R:")
+                .append(remoteAddr)
+                .append(']');
+            strVal = buf.toString();
+        } else if (localAddr != null) {
+            StringBuilder buf = new StringBuilder(64)
+                .append("[id: 0x")
+                .append(id.asShortText())
+                .append(", L:")
+                .append(localAddr)
+                .append(']');
+            strVal = buf.toString();
+        } else {
+            StringBuilder buf = new StringBuilder(16)
+                .append("[id: 0x")
+                .append(id.asShortText())
+                .append(']');
+            strVal = buf.toString();
+        }
+
+        strValActive = active;
+        return strVal;
+    }
+
+    @Override
+    public final ChannelPromise voidPromise() {
+        return pipeline.voidPromise();
+    }
+
+
+
 
     /**
      * Returns the {@link SocketAddress} which is bound locally.
@@ -1064,15 +1125,6 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
      * Return the {@link SocketAddress} which the {@link Channel} is connected to.
      */
     protected abstract SocketAddress remoteAddress0();
-
-    /**
-     * Is called after the {@link Channel} is registered with its {@link EventLoop} as part of the register process.
-     *
-     * Sub-classes may override this method
-     */
-    protected void doRegister() throws Exception {
-        // NOOP
-    }
 
     /**
      * Bind the {@link Channel} to the {@link SocketAddress}
