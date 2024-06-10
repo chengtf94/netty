@@ -71,6 +71,10 @@ public final class ByteBufUtil {
             (int) CharsetUtil.encoder(CharsetUtil.UTF_8).maxBytesPerChar();
 
     static final int WRITE_CHUNK_SIZE = 8192;
+
+    /**
+     * 创建PooledByteBufAllocator
+     */
     static final ByteBufAllocator DEFAULT_ALLOCATOR;
 
     static {
