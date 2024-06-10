@@ -797,6 +797,9 @@ public final class ChannelOutboundBuffer {
         boolean processMessage(Object msg) throws Exception;
     }
 
+    /**
+     * 对象池在Channel写入缓冲队列中的使用
+     */
     static final class Entry {
         private static final ObjectPool<Entry> RECYCLER = ObjectPool.newPool(new ObjectCreator<Entry>() {
             @Override
@@ -804,7 +807,9 @@ public final class ChannelOutboundBuffer {
                 return new Entry(handle);
             }
         });
-
+        /**
+         * recyclerHandle用于回收对象
+         */
         private final Handle<Entry> handle;
         Entry next;
         Object msg;
@@ -849,6 +854,9 @@ public final class ChannelOutboundBuffer {
             return 0;
         }
 
+        /**
+         * 将对象回收进对象池中：清空对象中的所有属性、通过对象中持有的对象池句柄Handler，将对象回收进对象池中
+         */
         void recycle() {
             next = null;
             bufs = null;
