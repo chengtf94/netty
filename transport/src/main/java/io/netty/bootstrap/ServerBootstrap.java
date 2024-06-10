@@ -208,10 +208,6 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             this.childHandler = childHandler;
             this.childOptions = childOptions;
             this.childAttrs = childAttrs;
-            // Task which is scheduled to re-enable auto-read.
-            // It's important to create this Runnable before we try to submit it as otherwise the URLClassLoader may
-            // not be able to load the class because of the file limit it already reached.
-            // See https://github.com/netty/netty/issues/1328
             enableAutoReadTask = new Runnable() {
                 @Override
                 public void run() {
@@ -220,16 +216,26 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             };
         }
 
+        /**
+         * Netty处理客户端连接的核心逻辑：初始化客户端NioSocketChannel，并将客户端NioSocketChannel注册到从Reactor Group中，并监听OP_READ事件。
+         */
         @Override
         @SuppressWarnings("unchecked")
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
             final Channel child = (Channel) msg;
 
+            // 向客户端NioSocketChannel的pipeline中，添加在启动配置类ServerBootstrap中配置的ChannelHandler
             child.pipeline().addLast(childHandler);
 
+            // 利用配置的属性初始化客户端NioSocketChannel
             setChannelOptions(child, childOptions, logger);
             setAttributes(child, childAttrs);
 
+            /*
+             * 1：在从Reactor线程组中选择一个Reactor绑定
+             * 2：将客户端SocketChannel注册到绑定的Reactor上
+             * 3：SocketChannel注册到从reactor中的selector上，并监听OP_READ事件
+             */
             try {
                 childGroup.register(child).addListener(new ChannelFutureListener() {
                     @Override
@@ -269,34 +275,12 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         return config;
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     @Override
     @SuppressWarnings("CloneDoesntCallSuperClone")
     public ServerBootstrap clone() {
         return new ServerBootstrap(this);
     }
 
-    /**
-     * Return the configured {@link EventLoopGroup} which will be used for the child channels or {@code null}
-     * if non is configured yet.
-     *
-     * @deprecated Use {@link #config()} instead.
-     */
     @Deprecated
     public EventLoopGroup childGroup() {
         return childGroup;

@@ -23,19 +23,18 @@ import static java.lang.Math.max;
 import static java.lang.Math.min;
 
 /**
- * AdaptiveRecvByteBufAllocator：Channel接收数据用的Buffer分配器
- *
- * The {@link RecvByteBufAllocator} that automatically increases and
- * decreases the predicted buffer size on feed back.
- * <p>
- * It gradually increases the expected number of readable bytes if the previous
- * read fully filled the allocated buffer.  It gradually decreases the expected
- * number of readable bytes if the read operation was not able to fill a certain
- * amount of the allocated buffer two times consecutively.  Otherwise, it keeps
- * returning the same prediction.
+ * AdaptiveRecvByteBufAllocator：根据Channel上每次到来的IO数据大小来自适应动态调整ByteBuffer的容量
+ * 1）对于服务端NioServerSocketChannel来说，它上边的IO数据就是客户端的连接，它的长度和类型都是固定的，所以在接收客户端连接的时候并不需要这样的一个ByteBuffer来接收，我们会将接收到的客户端连接存放在List<Object> readBuf集合中
+ * 2）对于客户端NioSocketChannel来说，它上边的IO数据时客户端发送来的网络数据，长度是不定的，所以才会需要这样一个可以根据每次IO数据的大小来自适应动态调整容量的ByteBuffer来接收。
  */
 public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufAllocator {
 
+    static final int DEFAULT_MINIMUM = 64;
+    // Use an initial value that is bigger than the common MTU of 1500
+    static final int DEFAULT_INITIAL = 2048;
+    static final int DEFAULT_MAXIMUM = 65536;
+    private static final int INDEX_INCREMENT = 4;
+    private static final int INDEX_DECREMENT = 1;
     private static final int[] SIZE_TABLE;
     static {
         List<Integer> sizeTable = new ArrayList<Integer>();
@@ -53,8 +52,8 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
     }
 
     private final int minIndex;
-    private final int maxIndex;
     private final int initial;
+    private final int maxIndex;
 
     /**
      * 构造方法
@@ -62,10 +61,6 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
     public AdaptiveRecvByteBufAllocator() {
         this(DEFAULT_MINIMUM, DEFAULT_INITIAL, DEFAULT_MAXIMUM);
     }
-    static final int DEFAULT_MINIMUM = 64;
-    // Use an initial value that is bigger than the common MTU of 1500
-    static final int DEFAULT_INITIAL = 2048;
-    static final int DEFAULT_MAXIMUM = 65536;
     public AdaptiveRecvByteBufAllocator(int minimum, int initial, int maximum) {
         checkPositive(minimum, "minimum");
         if (initial < minimum) {
@@ -100,7 +95,6 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
             if (high == low) {
                 return high;
             }
-
             int mid = low + high >>> 1;
             int a = SIZE_TABLE[mid];
             int b = SIZE_TABLE[mid + 1];
@@ -116,19 +110,18 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
         }
     }
 
-
-
-
-
-
-
-
-    private static final int INDEX_INCREMENT = 4;
-    private static final int INDEX_DECREMENT = 1;
-
     @Deprecated
     public static final AdaptiveRecvByteBufAllocator DEFAULT = new AdaptiveRecvByteBufAllocator();
 
+    @SuppressWarnings("deprecation")
+    @Override
+    public Handle newHandle() {
+        return new HandleImpl(minIndex, maxIndex, initial);
+    }
+
+    /**
+     * HandleImpl：专门用于统计read loop中接收客户端连接的次数，以及判断是否该结束read loop转去执行异步任务。
+     */
     private final class HandleImpl extends MaxMessageHandle {
         private final int minIndex;
         private final int maxIndex;
@@ -139,17 +132,12 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
         HandleImpl(int minIndex, int maxIndex, int initial) {
             this.minIndex = minIndex;
             this.maxIndex = maxIndex;
-
             index = getSizeTableIndex(initial);
             nextReceiveBufferSize = SIZE_TABLE[index];
         }
 
         @Override
         public void lastBytesRead(int bytes) {
-            // If we read as much as we asked for we should check if we need to ramp up the size of our next guess.
-            // This helps adjust more quickly when large amounts of data is pending and can avoid going back to
-            // the selector to check for more data. Going back to the selector can add significant latency for large
-            // data transfers.
             if (bytes == attemptedBytesRead()) {
                 record(bytes);
             }
@@ -181,13 +169,7 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
         public void readComplete() {
             record(totalBytesRead());
         }
-    }
 
-
-    @SuppressWarnings("deprecation")
-    @Override
-    public Handle newHandle() {
-        return new HandleImpl(minIndex, maxIndex, initial);
     }
 
     @Override

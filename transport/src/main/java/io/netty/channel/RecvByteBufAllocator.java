@@ -23,8 +23,7 @@ import io.netty.util.internal.UnstableApi;
 import static io.netty.util.internal.ObjectUtil.checkNotNull;
 
 /**
- * Allocates a new receive buffer whose capacity is probably large enough to read all inbound data and small enough
- * not to waste its space.
+ * RecvByteBufAllocator：ByteBuffer分配器接口，即Channel接收数据用的Buffer分配器
  */
 public interface RecvByteBufAllocator {
     /**

@@ -41,55 +41,49 @@ import static io.netty.channel.internal.ChannelUtils.MAX_BYTES_PER_GATHERING_WRI
  */
 public class NioSocketChannel extends AbstractNioByteChannel implements io.netty.channel.socket.SocketChannel {
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(NioSocketChannel.class);
+
+    /**
+     * SocketChannel配置
+     */
+    private final SocketChannelConfig config;
+
+    /**
+     * 构造方法
+     */
     private static final SelectorProvider DEFAULT_SELECTOR_PROVIDER = SelectorProvider.provider();
+    public NioSocketChannel() {
+        this(DEFAULT_SELECTOR_PROVIDER);
+    }
+
+    public NioSocketChannel(SelectorProvider provider) {
+        this(newSocket(provider));
+    }
 
     private static SocketChannel newSocket(SelectorProvider provider) {
         try {
-            /**
-             *  Use the {@link SelectorProvider} to open {@link SocketChannel} and so remove condition in
-             *  {@link SelectorProvider#provider()} which is called by each SocketChannel.open() otherwise.
-             *
-             *  See <a href="https://github.com/netty/netty/issues/2308">#2308</a>.
-             */
             return provider.openSocketChannel();
         } catch (IOException e) {
             throw new ChannelException("Failed to open a socket.", e);
         }
     }
 
-    private final SocketChannelConfig config;
-
-    /**
-     * Create a new instance
-     */
-    public NioSocketChannel() {
-        this(DEFAULT_SELECTOR_PROVIDER);
-    }
-
-    /**
-     * Create a new instance using the given {@link SelectorProvider}.
-     */
-    public NioSocketChannel(SelectorProvider provider) {
-        this(newSocket(provider));
-    }
-
-    /**
-     * Create a new instance using the given {@link SocketChannel}.
-     */
     public NioSocketChannel(SocketChannel socket) {
         this(null, socket);
     }
 
-    /**
-     * Create a new instance
-     *
-     * @param parent    the {@link Channel} which created this instance or {@code null} if it was created by the user
-     * @param socket    the {@link SocketChannel} which will be used
-     */
     public NioSocketChannel(Channel parent, SocketChannel socket) {
         super(parent, socket);
         config = new NioSocketChannelConfig(this, socket.socket());
     }
+
+
+
+
+
+
+
+
+
 
     @Override
     public ServerSocketChannel parent() {
@@ -449,6 +443,9 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         }
     }
 
+    /**
+     * NioSocketChannel配置类
+     */
     private final class NioSocketChannelConfig extends DefaultSocketChannelConfig {
         private volatile int maxBytesPerGatheringWrite = Integer.MAX_VALUE;
         private NioSocketChannelConfig(NioSocketChannel channel, Socket javaSocket) {

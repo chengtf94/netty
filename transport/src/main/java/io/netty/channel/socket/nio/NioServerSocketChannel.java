@@ -86,9 +86,31 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel implements
         }
     }
 
+    @Override
+    public ServerSocketChannelConfig config() {
+        return config;
+    }
 
-
-
+    @Override
+    protected int doReadMessages(List<Object> buf) throws Exception {
+        // 先根据ServerSocketChannel的accept方法获取到JDK NIO 原生的SocketChannel（用于底层真正与客户端通信的Channel）
+        SocketChannel ch = SocketUtils.accept(javaChannel());
+        try {
+            // 再创建Netty中的NioSocketChannel
+            if (ch != null) {
+                buf.add(new NioSocketChannel(this, ch));
+                return 1;
+            }
+        } catch (Throwable t) {
+            logger.warn("Failed to create a new channel from an accepted socket.", t);
+            try {
+                ch.close();
+            } catch (Throwable t2) {
+                logger.warn("Failed to close a socket.", t2);
+            }
+        }
+        return 0;
+    }
 
 
 
@@ -114,14 +136,7 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel implements
     }
 
     @Override
-    public ServerSocketChannelConfig config() {
-        return config;
-    }
-
-    @Override
     public boolean isActive() {
-        // As java.nio.ServerSocketChannel.isBound() will continue to return true even after the channel was closed
-        // we will also need to check if it is open.
         return isOpen() && javaChannel().socket().isBound();
     }
 
@@ -143,27 +158,7 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel implements
         javaChannel().close();
     }
 
-    @Override
-    protected int doReadMessages(List<Object> buf) throws Exception {
-        SocketChannel ch = SocketUtils.accept(javaChannel());
 
-        try {
-            if (ch != null) {
-                buf.add(new NioSocketChannel(this, ch));
-                return 1;
-            }
-        } catch (Throwable t) {
-            logger.warn("Failed to create a new channel from an accepted socket.", t);
-
-            try {
-                ch.close();
-            } catch (Throwable t2) {
-                logger.warn("Failed to close a socket.", t2);
-            }
-        }
-
-        return 0;
-    }
 
     // Unnecessary stuff
     @Override

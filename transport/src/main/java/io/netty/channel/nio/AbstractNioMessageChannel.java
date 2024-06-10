@@ -31,6 +31,8 @@ import java.util.List;
 
 /**
  * AbstractNioMessageChannel：主要是对NioServerSocketChannel底层读写行为的封装和定义，例如accept接收客户端连接
+ *  服务端NioServerSocketChannel主要负责处理OP_ACCEPT事件，创建用于通信的客户端NioSocketChannel。这时候客户端与服务端还没开始通信，
+ *  所以主Reactor线程从NioServerSocketChannel的读取对象为Message。
  */
 public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
     boolean inputShutdown;
@@ -48,26 +50,42 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
     }
 
     /**
-     * NioMessageUnsafe
+     * NioMessageUnsafe：NioServerSocketChannel中对底层JDK NIO ServerSocketChannel的Unsafe底层操作类
+     * Unsafe接口是Netty对Channel底层操作行为的封装，例如NioServerSocketChannel的底层Unsafe操作类干的事情就是绑定端口地址，处理OP_ACCEPT事件。
      */
     private final class NioMessageUnsafe extends AbstractNioUnsafe {
 
+        /**
+         * 存放连接建立后，创建的客户端SocketChannel
+         */
         private final List<Object> readBuf = new ArrayList<Object>();
 
+        /**
+         * 处理客户端连接事件OP_ACCEPT
+         */
         @Override
         public void read() {
+
+            // 必须在Main Reactor线程中执行
             assert eventLoop().inEventLoop();
+
+            // 服务端ServerSocketChannel中的config和pipeline
             final ChannelConfig config = config();
             final ChannelPipeline pipeline = pipeline();
+
+            // 创建接收数据Buffer分配器（用于分配容量大小合适的byteBuffer用来容纳接收数据）
             final RecvByteBufAllocator.Handle allocHandle = unsafe().recvBufAllocHandle();
             allocHandle.reset(config);
 
+            // 接收客户端连接SocketChannel
             boolean closed = false;
             Throwable exception = null;
             try {
                 try {
                     do {
+                        // 底层调用NioServerSocketChannel->doReadMessages，接收客户端连接SocketChannel
                         int localRead = doReadMessages(readBuf);
+                        // 已无新的连接可接收，则退出read loop
                         if (localRead == 0) {
                             break;
                         }
@@ -75,28 +93,31 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
                             closed = true;
                             break;
                         }
-
+                        // 统计在当前事件循环中已经读取到得Message数量（创建连接的个数）
                         allocHandle.incMessagesRead(localRead);
-                    } while (allocHandle.continueReading());
+                    } while (allocHandle.continueReading()); // 判断是否已经读满16次
                 } catch (Throwable t) {
                     exception = t;
                 }
 
+                // 在NioServerSocketChannel对应的pipeline中传播ChannelRead事件：初始化客户端连接SocketChannel，并将其绑定到从Reactor线程组中的一个Reactor上
                 int size = readBuf.size();
                 for (int i = 0; i < size; i ++) {
                     readPending = false;
                     pipeline.fireChannelRead(readBuf.get(i));
                 }
+
+                // 清除本次accept 创建的客户端连接SocketChannel集合
                 readBuf.clear();
                 allocHandle.readComplete();
+
+                // 触发readComplete事件传播
                 pipeline.fireChannelReadComplete();
 
                 if (exception != null) {
                     closed = closeOnReadError(exception);
-
                     pipeline.fireExceptionCaught(exception);
                 }
-
                 if (closed) {
                     inputShutdown = true;
                     if (isOpen()) {
@@ -104,12 +125,6 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
                     }
                 }
             } finally {
-                // Check if there is a readPending which was not processed yet.
-                // This could be for two reasons:
-                // * The user called Channel.read() or ChannelHandlerContext.read() in channelRead(...) method
-                // * The user called Channel.read() or ChannelHandlerContext.read() in channelReadComplete(...) method
-                //
-                // See https://github.com/netty/netty/issues/2254
                 if (!readPending && !config.isAutoRead()) {
                     removeReadOp();
                 }
@@ -117,7 +132,10 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
         }
     }
 
-
+    /**
+     * doReadMessages函数：接收完成三次握手的客户端连接，底层会调用到JDK NIO ServerSocketChannel的accept方法，从内核全连接队列中取出客户端连接
+     */
+    protected abstract int doReadMessages(List<Object> buf) throws Exception;
 
 
 
@@ -198,11 +216,6 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
         }
         return true;
     }
-
-    /**
-     * Read messages into the given array and return the amount which was read.
-     */
-    protected abstract int doReadMessages(List<Object> buf) throws Exception;
 
     /**
      * Write a message to the underlying {@link java.nio.channels.Channel}.

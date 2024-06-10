@@ -148,6 +148,11 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
      */
     protected abstract void doBeginRead() throws Exception;
 
+    @Override
+    public ChannelPipeline pipeline() {
+        return pipeline;
+    }
+
     /**
      * AbstractUnsafe
      */
@@ -323,11 +328,10 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         }
 
 
-
-
-
-
-
+        /**
+         * 创建接收数据Buffer分配器（用于分配容量大小合适的byteBuffer用来容纳接收数据）
+         * 在接收连接的场景中，这里的allocHandle只是用于控制read loop的循环读取创建连接的次数。
+         */
         @Override
         public RecvByteBufAllocator.Handle recvBufAllocHandle() {
             if (recvHandle == null) {
@@ -335,6 +339,21 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
             return recvHandle;
         }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
         @Override
         public final ChannelOutboundBuffer outboundBuffer() {
@@ -847,11 +866,6 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
     @Override
     public Channel parent() {
         return parent;
-    }
-
-    @Override
-    public ChannelPipeline pipeline() {
-        return pipeline;
     }
 
     @Override

@@ -38,7 +38,8 @@ import java.nio.channels.SelectionKey;
 import static io.netty.channel.internal.ChannelUtils.WRITE_STATUS_SNDBUF_FULL;
 
 /**
- * {@link AbstractNioChannel} base class for {@link Channel}s that operate on bytes.
+ * AbstractNioByteChannel：客户端NioSocketChannel主要处理的是服务端与客户端的通信，这里涉及到接收客户端发送来的数据，
+ * 而从Reactor线程从NioSocketChannel中读取的正是网络通信数据单位为Byte。
  */
 public abstract class AbstractNioByteChannel extends AbstractNioChannel {
     private static final ChannelMetadata METADATA = new ChannelMetadata(false, 16);
@@ -57,14 +58,24 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
     private boolean inputClosedSeenErrorOnRead;
 
     /**
-     * Create a new instance
-     *
-     * @param parent            the parent {@link Channel} by which this instance was created. May be {@code null}
-     * @param ch                the underlying {@link SelectableChannel} on which it operates
+     * 构造方法
      */
     protected AbstractNioByteChannel(Channel parent, SelectableChannel ch) {
+        // 客户端NioSocketChannel向从Reactor注册的是SelectionKey.OP_READ事件
         super(parent, ch, SelectionKey.OP_READ);
     }
+
+
+
+
+
+
+
+
+
+
+
+
 
     /**
      * Shutdown the input side of the channel.
@@ -80,20 +91,9 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         return new NioByteUnsafe();
     }
 
-    @Override
-    public ChannelMetadata metadata() {
-        return METADATA;
-    }
-
-    final boolean shouldBreakReadReady(ChannelConfig config) {
-        return isInputShutdown0() && (inputClosedSeenErrorOnRead || !isAllowHalfClosure(config));
-    }
-
-    private static boolean isAllowHalfClosure(ChannelConfig config) {
-        return config instanceof SocketChannelConfig &&
-                ((SocketChannelConfig) config).isAllowHalfClosure();
-    }
-
+    /**
+     * NioByteUnsafe：NioSocketChannel中对底层JDK NIO SocketChannel的Unsafe底层操作类
+     */
     protected class NioByteUnsafe extends AbstractNioUnsafe {
 
         private void closeOnRead(ChannelPipeline pipeline) {
@@ -187,6 +187,20 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                 }
             }
         }
+    }
+
+    @Override
+    public ChannelMetadata metadata() {
+        return METADATA;
+    }
+
+    final boolean shouldBreakReadReady(ChannelConfig config) {
+        return isInputShutdown0() && (inputClosedSeenErrorOnRead || !isAllowHalfClosure(config));
+    }
+
+    private static boolean isAllowHalfClosure(ChannelConfig config) {
+        return config instanceof SocketChannelConfig &&
+                ((SocketChannelConfig) config).isAllowHalfClosure();
     }
 
     /**

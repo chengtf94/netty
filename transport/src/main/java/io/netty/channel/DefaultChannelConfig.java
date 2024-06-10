@@ -79,6 +79,44 @@ public class DefaultChannelConfig implements ChannelConfig {
         this.channel = channel;
     }
 
+    /**
+     * Set the {@link RecvByteBufAllocator} which is used for the channel to allocate receive buffers.
+     */
+    private void setRecvByteBufAllocator(RecvByteBufAllocator allocator, ChannelMetadata metadata) {
+        if (allocator instanceof MaxMessagesRecvByteBufAllocator) {
+            ((MaxMessagesRecvByteBufAllocator) allocator).maxMessagesPerRead(metadata.defaultMaxMessagesPerRead());
+        } else if (allocator == null) {
+            throw new NullPointerException("allocator");
+        }
+        setRecvByteBufAllocator(allocator);
+    }
+
+    @Override
+    public ChannelConfig setRecvByteBufAllocator(RecvByteBufAllocator allocator) {
+        rcvBufAllocator = checkNotNull(allocator, "allocator");
+        return this;
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public <T extends RecvByteBufAllocator> T getRecvByteBufAllocator() {
+        return (T) rcvBufAllocator;
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     @Override
     @SuppressWarnings("deprecation")
     public Map<ChannelOption<?>, Object> getOptions() {
@@ -279,32 +317,10 @@ public class DefaultChannelConfig implements ChannelConfig {
         return this;
     }
 
-    @SuppressWarnings("unchecked")
-    @Override
-    public <T extends RecvByteBufAllocator> T getRecvByteBufAllocator() {
-        return (T) rcvBufAllocator;
-    }
 
-    @Override
-    public ChannelConfig setRecvByteBufAllocator(RecvByteBufAllocator allocator) {
-        rcvBufAllocator = checkNotNull(allocator, "allocator");
-        return this;
-    }
 
-    /**
-     * Set the {@link RecvByteBufAllocator} which is used for the channel to allocate receive buffers.
-     * @param allocator the allocator to set.
-     * @param metadata Used to set the {@link ChannelMetadata#defaultMaxMessagesPerRead()} if {@code allocator}
-     * is of type {@link MaxMessagesRecvByteBufAllocator}.
-     */
-    private void setRecvByteBufAllocator(RecvByteBufAllocator allocator, ChannelMetadata metadata) {
-        if (allocator instanceof MaxMessagesRecvByteBufAllocator) {
-            ((MaxMessagesRecvByteBufAllocator) allocator).maxMessagesPerRead(metadata.defaultMaxMessagesPerRead());
-        } else if (allocator == null) {
-            throw new NullPointerException("allocator");
-        }
-        setRecvByteBufAllocator(allocator);
-    }
+
+
 
     @Override
     public boolean isAutoRead() {
