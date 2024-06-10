@@ -202,6 +202,7 @@ public interface ChannelOutboundInvoker {
 
     /**
      * 发送数据：从当前 ChannelHandler 开始在 pipeline 中向前传播 write 事件直到 HeadContext
+     * 只是将用户要发送的数据临时写到 channel 对应的待发送缓冲队列 ChannelOutboundBuffer 中，然而并不会将数据写入 Socket 中
      */
     ChannelFuture write(Object msg);
 
@@ -213,7 +214,8 @@ public interface ChannelOutboundInvoker {
     ChannelFuture write(Object msg, ChannelPromise promise);
 
     /**
-     * Request to flush all pending messages via this ChannelOutboundInvoker.
+     * 真正发送数据：从当前 channelHandler 开始在 pipeline 中向前传播直到 HeadContext
+     * 将 ChannelOutboundBuffer 中的待发送数据写入 Socket 中的发送缓冲区中，从而将数据发送出去
      */
     ChannelOutboundInvoker flush();
 

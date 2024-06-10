@@ -334,29 +334,6 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         }
     }
 
-    private void invokeExceptionCaught(final Throwable cause) {
-        if (invokeHandler()) {
-            try {
-                handler().exceptionCaught(this, cause);
-            } catch (Throwable error) {
-                if (logger.isDebugEnabled()) {
-                    logger.debug(
-                        "An exception {}" +
-                        "was thrown by a user handler's exceptionCaught() " +
-                        "method while handling the following exception:",
-                        ThrowableUtil.stackTraceToString(error), cause);
-                } else if (logger.isWarnEnabled()) {
-                    logger.warn(
-                        "An exception '{}' [enable DEBUG level for full stacktrace] " +
-                        "was thrown by a user handler's exceptionCaught() " +
-                        "method while handling the following exception:", error, cause);
-                }
-            }
-        } else {
-            fireExceptionCaught(cause);
-        }
-    }
-
     @Override
     public ChannelHandlerContext fireUserEventTriggered(final Object event) {
         invokeUserEventTriggered(findContextInbound(MASK_USER_EVENT_TRIGGERED), event);
@@ -794,9 +771,14 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         PromiseNotificationUtil.tryFailure(promise, cause, promise instanceof VoidChannelPromise ? null : logger);
     }
 
+    /**
+     * 真正发送数据
+     */
     @Override
     public ChannelHandlerContext flush() {
+        // 向前查找覆盖flush方法的Outbound类型的ChannelHandler
         final AbstractChannelHandlerContext next = findContextOutbound(MASK_FLUSH);
+        // 获取执行ChannelHandler的executor,在初始化pipeline的时候设置，默认为Reactor线程
         EventExecutor executor = next.executor();
         if (executor.inEventLoop()) {
             next.invokeFlush();
@@ -807,10 +789,12 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
             }
             safeExecute(executor, tasks.invokeFlushTask, channel().voidPromise(), null, false);
         }
-
         return this;
     }
 
+    /**
+     * 真正发送数据
+     */
     private void invokeFlush() {
         if (invokeHandler()) {
             invokeFlush0();
@@ -823,8 +807,37 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         try {
             ((ChannelOutboundHandler) handler()).flush(this);
         } catch (Throwable t) {
+            // 与 write 事件处理不同的是，当调用 nextChannelHandler 的 flush 回调出现异常的时候，会触发 nextChannelHandler 的 exceptionCaught 回调。
             invokeExceptionCaught(t);
         }
+    }
+
+    private void invokeExceptionCaught(final Throwable cause) {
+        if (invokeHandler()) {
+            try {
+                handler().exceptionCaught(this, cause);
+            } catch (Throwable error) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug(
+                            "An exception {}" +
+                                    "was thrown by a user handler's exceptionCaught() " +
+                                    "method while handling the following exception:",
+                            ThrowableUtil.stackTraceToString(error), cause);
+                } else if (logger.isWarnEnabled()) {
+                    logger.warn(
+                            "An exception '{}' [enable DEBUG level for full stacktrace] " +
+                                    "was thrown by a user handler's exceptionCaught() " +
+                                    "method while handling the following exception:", error, cause);
+                }
+            }
+        } else {
+            fireExceptionCaught(cause);
+        }
+    }
+
+    @Override
+    public ChannelFuture writeAndFlush(Object msg) {
+        return writeAndFlush(msg, newPromise());
     }
 
     @Override
@@ -835,17 +848,37 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
 
     void invokeWriteAndFlush(Object msg, ChannelPromise promise) {
         if (invokeHandler()) {
+            // 向前传递write事件
             invokeWrite0(msg, promise);
+            // 向前传递flush事件
             invokeFlush0();
         } else {
             writeAndFlush(msg, promise);
         }
     }
 
-    @Override
-    public ChannelFuture writeAndFlush(Object msg) {
-        return writeAndFlush(msg, newPromise());
-    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

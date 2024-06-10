@@ -148,9 +148,6 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             unsafe.beginRead();
         }
 
-        /**
-         * Netty 真正处理 write 事件的地方
-         */
         @Override
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
             unsafe.write(msg, promise);

@@ -204,22 +204,11 @@ public final class ChannelOutboundBuffer {
         }
     }
 
-
-
-
-
-
-
-
     /**
      * Add a flush to this {@link ChannelOutboundBuffer}. This means all previous added messages are marked as flushed
      * and so you will be able to handle them.
      */
     public void addFlush() {
-        // There is no need to process all entries if there was already a flush before and no new messages
-        // where added in the meantime.
-        //
-        // See https://github.com/netty/netty/issues/2577
         Entry entry = unflushedEntry;
         if (entry != null) {
             if (flushedEntry == null) {
@@ -228,6 +217,7 @@ public final class ChannelOutboundBuffer {
             }
             do {
                 flushed ++;
+                // 如果当前entry对应的write操作被用户取消，则释放msg，并降低channelOutboundBuffer水位线
                 if (!entry.promise.setUncancellable()) {
                     // Was cancelled so make sure we free up memory and notify about the freed bytes
                     int pending = entry.cancel();
@@ -240,6 +230,52 @@ public final class ChannelOutboundBuffer {
             unflushedEntry = null;
         }
     }
+
+    /**
+     * 减少 ChannelOutboundBuffer 的内存占用总量的水位线 totalPendingSize
+     */
+    private void decrementPendingOutboundBytes(long size, boolean invokeLater, boolean notifyWritability) {
+        if (size == 0) {
+            return;
+        }
+        long newWriteBufferSize = TOTAL_PENDING_SIZE_UPDATER.addAndGet(this, -size);
+        if (notifyWritability && newWriteBufferSize < channel.config().getWriteBufferLowWaterMark()) {
+            setWritable(invokeLater);
+        }
+    }
+
+    /**
+     * 将当前 Channel 的状态设置为可写状态
+     */
+    private void setWritable(boolean invokeLater) {
+        for (;;) {
+            final int oldValue = unwritable;
+            final int newValue = oldValue & ~1;
+            if (UNWRITABLE_UPDATER.compareAndSet(this, oldValue, newValue)) {
+                if (oldValue != 0 && newValue == 0) {
+                    // 在 pipeline 中再次触发 ChannelWritabilityChanged 事件的传播
+                    fireChannelWritabilityChanged(invokeLater);
+                }
+                break;
+            }
+        }
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     /**
      * Increment the pending bytes which will be written at some point.
@@ -258,16 +294,7 @@ public final class ChannelOutboundBuffer {
         decrementPendingOutboundBytes(size, true, true);
     }
 
-    private void decrementPendingOutboundBytes(long size, boolean invokeLater, boolean notifyWritability) {
-        if (size == 0) {
-            return;
-        }
 
-        long newWriteBufferSize = TOTAL_PENDING_SIZE_UPDATER.addAndGet(this, -size);
-        if (notifyWritability && newWriteBufferSize < channel.config().getWriteBufferLowWaterMark()) {
-            setWritable(invokeLater);
-        }
-    }
 
     private static long total(Object msg) {
         if (msg instanceof ByteBuf) {
@@ -657,18 +684,7 @@ public final class ChannelOutboundBuffer {
         return 1 << index;
     }
 
-    private void setWritable(boolean invokeLater) {
-        for (;;) {
-            final int oldValue = unwritable;
-            final int newValue = oldValue & ~1;
-            if (UNWRITABLE_UPDATER.compareAndSet(this, oldValue, newValue)) {
-                if (oldValue != 0 && newValue == 0) {
-                    fireChannelWritabilityChanged(invokeLater);
-                }
-                break;
-            }
-        }
-    }
+
 
 
 
@@ -689,12 +705,11 @@ public final class ChannelOutboundBuffer {
         return flushed == 0;
     }
 
+    /**
+     * 在 Netty 在发送数据的时候，如果发现当前 channel 处于非活跃状态，则将 ChannelOutboundBuffer 中 flushedEntry 与tailEntry 之间的 Entry 对象节点
+     * 全部删除，并释放发送数据占用的内存空间，同时回收 Entry 对象实例
+     */
     void failFlushed(Throwable cause, boolean notify) {
-        // Make sure that this method does not reenter.  A listener added to the current promise can be notified by the
-        // current thread in the tryFailure() call of the loop below, and the listener can trigger another fail() call
-        // indirectly (usually by closing the channel.)
-        //
-        // See https://github.com/netty/netty/issues/1501
         if (inFail) {
             return;
         }

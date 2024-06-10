@@ -47,6 +47,9 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             " (expected: " + StringUtil.simpleClassName(ByteBuf.class) + ", " +
             StringUtil.simpleClassName(FileRegion.class) + ')';
 
+    /**
+     * flush任务
+     */
     private final Runnable flushTask = new Runnable() {
         @Override
         public void run() {
@@ -214,6 +217,107 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                 "unsupported message type: " + StringUtil.simpleClassName(msg) + EXPECTED_TYPES);
     }
 
+    protected final void clearOpWrite() {
+        final SelectionKey key = selectionKey();
+        if (!key.isValid()) {
+            return;
+        }
+        final int interestOps = key.interestOps();
+        if ((interestOps & SelectionKey.OP_WRITE) != 0) {
+            key.interestOps(interestOps & ~SelectionKey.OP_WRITE);
+        }
+    }
+
+    /**
+     * Write objects to the OS.
+     */
+    protected final int doWrite0(ChannelOutboundBuffer in) throws Exception {
+        Object msg = in.current();
+        if (msg == null) {
+            return 0;
+        }
+        return doWriteInternal(in, in.current());
+    }
+
+    private int doWriteInternal(ChannelOutboundBuffer in, Object msg) throws Exception {
+        if (msg instanceof ByteBuf) {
+            ByteBuf buf = (ByteBuf) msg;
+            if (!buf.isReadable()) {
+                in.remove();
+                return 0;
+            }
+
+            final int localFlushedAmount = doWriteBytes(buf);
+            if (localFlushedAmount > 0) {
+                in.progress(localFlushedAmount);
+                if (!buf.isReadable()) {
+                    in.remove();
+                }
+                return 1;
+            }
+        } else if (msg instanceof FileRegion) {
+            // 若文件已经传输完毕，则返回0
+            FileRegion region = (FileRegion) msg;
+            if (region.transferred() >= region.count()) {
+                in.remove();
+                return 0;
+            }
+            // 零拷贝的方式传输文件，返回1
+            long localFlushedAmount = doWriteFileRegion(region);
+            if (localFlushedAmount > 0) {
+                in.progress(localFlushedAmount);
+                if (region.transferred() >= region.count()) {
+                    in.remove();
+                }
+                return 1;
+            }
+        } else {
+            // Should not reach here.
+            throw new Error();
+        }
+        // 走到这里表示 此时Socket已经写不进去了 退出writeLoop，注册OP_WRITE事件，返回Integer.MAX_VALUE
+        return WRITE_STATUS_SNDBUF_FULL;
+    }
+
+
+    protected final void incompleteWrite(boolean setOpWrite) {
+        // Did not write completely.
+        if (setOpWrite) {
+            // 这里处理还没写满16次 但是socket缓冲区已满写不进去的情况 注册write事件：什么时候socket可写了， epoll会通知reactor线程继续写
+            setOpWrite();
+        } else {
+            // 必须清除OP_WRITE事件，此时Socket对应的缓冲区依然是可写的，只不过当前channel写够了16次，被SubReactor限制了。
+            // 这样SubReactor可以腾出手来处理其他channel上的IO事件。这里如果不清除OP_WRITE事件，则会一直被通知。
+            clearOpWrite();
+            // 如果本次writeLoop还没写完，则提交flushTask到reactor
+            // Netty 会将 channel 中剩下的待写数据的 flush 操作封装程 flushTask，丢进 reactor 的普通任务队列中，
+            // 等待 reactor 执行完其他 channel 上的 io 操作后在回过头来执行未写完的 flush 任务
+            eventLoop().execute(flushTask);
+        }
+    }
+
+    /**
+     * 向 Reactor 注册 OP_WRITE 事件
+     */
+    protected final void setOpWrite() {
+        final SelectionKey key = selectionKey();
+        if (!key.isValid()) {
+            return;
+        }
+        final int interestOps = key.interestOps();
+        if ((interestOps & SelectionKey.OP_WRITE) == 0) {
+            key.interestOps(interestOps | SelectionKey.OP_WRITE);
+        }
+    }
+
+
+
+
+
+
+
+
+
 
 
 
@@ -246,66 +350,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                 ((SocketChannelConfig) config).isAllowHalfClosure();
     }
 
-    /**
-     * Write objects to the OS.
-     * @param in the collection which contains objects to write.
-     * @return The value that should be decremented from the write quantum which starts at
-     * {@link ChannelConfig#getWriteSpinCount()}. The typical use cases are as follows:
-     * <ul>
-     *     <li>0 - if no write was attempted. This is appropriate if an empty {@link ByteBuf} (or other empty content)
-     *     is encountered</li>
-     *     <li>1 - if a single call to write data was made to the OS</li>
-     *     <li>{@link ChannelUtils#WRITE_STATUS_SNDBUF_FULL} - if an attempt to write data was made to the OS, but no
-     *     data was accepted</li>
-     * </ul>
-     * @throws Exception if an I/O exception occurs during write.
-     */
-    protected final int doWrite0(ChannelOutboundBuffer in) throws Exception {
-        Object msg = in.current();
-        if (msg == null) {
-            // Directly return here so incompleteWrite(...) is not called.
-            return 0;
-        }
-        return doWriteInternal(in, in.current());
-    }
 
-    private int doWriteInternal(ChannelOutboundBuffer in, Object msg) throws Exception {
-        if (msg instanceof ByteBuf) {
-            ByteBuf buf = (ByteBuf) msg;
-            if (!buf.isReadable()) {
-                in.remove();
-                return 0;
-            }
-
-            final int localFlushedAmount = doWriteBytes(buf);
-            if (localFlushedAmount > 0) {
-                in.progress(localFlushedAmount);
-                if (!buf.isReadable()) {
-                    in.remove();
-                }
-                return 1;
-            }
-        } else if (msg instanceof FileRegion) {
-            FileRegion region = (FileRegion) msg;
-            if (region.transferred() >= region.count()) {
-                in.remove();
-                return 0;
-            }
-
-            long localFlushedAmount = doWriteFileRegion(region);
-            if (localFlushedAmount > 0) {
-                in.progress(localFlushedAmount);
-                if (region.transferred() >= region.count()) {
-                    in.remove();
-                }
-                return 1;
-            }
-        } else {
-            // Should not reach here.
-            throw new Error();
-        }
-        return WRITE_STATUS_SNDBUF_FULL;
-    }
 
     @Override
     protected void doWrite(ChannelOutboundBuffer in) throws Exception {
@@ -324,21 +369,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         incompleteWrite(writeSpinCount < 0);
     }
 
-    protected final void incompleteWrite(boolean setOpWrite) {
-        // Did not write completely.
-        if (setOpWrite) {
-            setOpWrite();
-        } else {
-            // It is possible that we have set the write OP, woken up by NIO because the socket is writable, and then
-            // use our write quantum. In this case we no longer want to set the write OP because the socket is still
-            // writable (as far as we know). We will find out next time we attempt to write if the socket is writable
-            // and set the write OP if necessary.
-            clearOpWrite();
 
-            // Schedule flush again later so other tasks can be picked up in the meantime
-            eventLoop().execute(flushTask);
-        }
-    }
 
     /**
      * Write a {@link FileRegion}
@@ -355,31 +386,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
      */
     protected abstract int doWriteBytes(ByteBuf buf) throws Exception;
 
-    protected final void setOpWrite() {
-        final SelectionKey key = selectionKey();
-        // Check first if the key is still valid as it may be canceled as part of the deregistration
-        // from the EventLoop
-        // See https://github.com/netty/netty/issues/2104
-        if (!key.isValid()) {
-            return;
-        }
-        final int interestOps = key.interestOps();
-        if ((interestOps & SelectionKey.OP_WRITE) == 0) {
-            key.interestOps(interestOps | SelectionKey.OP_WRITE);
-        }
-    }
 
-    protected final void clearOpWrite() {
-        final SelectionKey key = selectionKey();
-        // Check first if the key is still valid as it may be canceled as part of the deregistration
-        // from the EventLoop
-        // See https://github.com/netty/netty/issues/2104
-        if (!key.isValid()) {
-            return;
-        }
-        final int interestOps = key.interestOps();
-        if ((interestOps & SelectionKey.OP_WRITE) != 0) {
-            key.interestOps(interestOps & ~SelectionKey.OP_WRITE);
-        }
-    }
+
+
 }

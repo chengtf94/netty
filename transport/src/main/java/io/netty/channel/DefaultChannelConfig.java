@@ -67,6 +67,9 @@ public class DefaultChannelConfig implements ChannelConfig {
     private volatile RecvByteBufAllocator rcvBufAllocator;
     private volatile MessageSizeEstimator msgSizeEstimator = DEFAULT_MSG_SIZE_ESTIMATOR;
     private volatile int connectTimeoutMillis = DEFAULT_CONNECT_TIMEOUT;
+    /**
+     * write loop 最大循环写入次数：默认为 16
+     */
     private volatile int writeSpinCount = 16;
     @SuppressWarnings("FieldMayBeFinal")
     private volatile int autoRead = 1;
