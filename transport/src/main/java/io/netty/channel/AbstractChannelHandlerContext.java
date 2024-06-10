@@ -59,9 +59,15 @@ import static io.netty.channel.ChannelHandlerMask.MASK_WRITE;
 import static io.netty.channel.ChannelHandlerMask.mask;
 
 abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, ResourceLeakHint {
-
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(AbstractChannelHandlerContext.class);
+
+    /**
+     * 前一个节点
+     */
     volatile AbstractChannelHandlerContext next;
+    /**
+     * 后一个节点
+     */
     volatile AbstractChannelHandlerContext prev;
 
     private static final AtomicIntegerFieldUpdater<AbstractChannelHandlerContext> HANDLER_STATE_UPDATER =
@@ -812,6 +818,12 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         }
     }
 
+    /**
+     * ExceptionCaught 事件回调：在 inbound 事件传播的过程中发生异常，才会回调 exceptionCaught
+     * inbound 事件一般都是由 netty 内核触发传播的，而 outbound 事件一般都是由用户选择触发的，例如用户在处理完业务逻辑触发的 write 事件或者 flush 事件。
+     * 在用户触发 outbound 事件后，一般都会得到一个 ChannelPromise 。用户可以向 ChannelPromise 添加各种 listener 。
+     * 当 outbound 事件在传播的过程中发生异常时，netty 会通知用户持有的这个 ChannelPromise ，但不会触发 exceptionCaught 的回调（只有 flush 事件例外）。
+     */
     private void invokeExceptionCaught(final Throwable cause) {
         if (invokeHandler()) {
             try {

@@ -71,6 +71,9 @@ public class DefaultChannelConfig implements ChannelConfig {
      * write loop 最大循环写入次数：默认为 16
      */
     private volatile int writeSpinCount = 16;
+    /**
+     * autoRead：一种背压机制，用来防止 OOM
+     */
     @SuppressWarnings("FieldMayBeFinal")
     private volatile int autoRead = 1;
     private volatile boolean autoClose = true;

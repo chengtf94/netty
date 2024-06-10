@@ -41,6 +41,7 @@ import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 /**
  * 默认ChannelPipeline：其实是一个ChannelHandlerContext类型的双向链表，头结点HeadContext、尾结点TailContext、并包装着ChannelHandler。
+ *
  */
 public class DefaultChannelPipeline implements ChannelPipeline {
     static final InternalLogger logger = InternalLoggerFactory.getInstance(DefaultChannelPipeline.class);
@@ -61,15 +62,15 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             AtomicReferenceFieldUpdater.newUpdater(
                     DefaultChannelPipeline.class, MessageSizeEstimator.Handle.class, "estimatorHandle");
     /**
-     * 头结点
+     * pipeline中的头结点
      */
     final AbstractChannelHandlerContext head;
     /**
-     * 尾结点
+     * pipeline中的尾结点
      */
     final AbstractChannelHandlerContext tail;
     /**
-     * NIOServerSocketChannel或NIOSocketChannel
+     * pipeline中持有对应channel的引用：NIOServerSocketChannel或NIOSocketChannel
      */
     private final Channel channel;
     private final ChannelFuture succeededFuture;
@@ -108,17 +109,28 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     }
 
     /**
-     * 头结点
+     * 头结点：类似于哨兵，其可以同时处理 Inbound 事件和 Outbound 事件，是 Inbound 事件的处理起点，也是 Outbound 事件的处理终点。
+     * 其承担了对 channel 底层相关的操作
      */
     final class HeadContext extends AbstractChannelHandlerContext
             implements ChannelOutboundHandler, ChannelInboundHandler {
-
+        /**
+         * headContext中持有对channel unsafe操作类的引用 用于执行channel底层操作
+         */
         private final Unsafe unsafe;
 
         HeadContext(DefaultChannelPipeline pipeline) {
             super(pipeline, null, HEAD_NAME, HeadContext.class);
+            // 持有channel unsafe操作类的引用，后续用于执行channel底层操作
             unsafe = pipeline.channel().unsafe();
+            // 设置channelHandler的状态为ADD_COMPLETE
             setAddComplete();
+        }
+
+        @Override
+        public void channelRegistered(ChannelHandlerContext ctx) {
+            invokeHandlerAddedIfNeeded();
+            ctx.fireChannelRegistered();
         }
 
         @Override
@@ -202,12 +214,6 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         }
 
         @Override
-        public void channelRegistered(ChannelHandlerContext ctx) {
-            invokeHandlerAddedIfNeeded();
-            ctx.fireChannelRegistered();
-        }
-
-        @Override
         public void channelUnregistered(ChannelHandlerContext ctx) {
             ctx.fireChannelUnregistered();
 
@@ -246,6 +252,8 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     /**
      * 尾结点
+     * 1）作为一个 ChannelOutboundHandler 的作用：负责将 outbound 事件从 pipeline 的末尾一直向前传播直到 HeadContext。
+     * 2）作为一个 ChannelInboundHandler 的作用：为 inbound 事件在 pipeline 中的传播做一个兜底的处理。
      */
     final class TailContext extends AbstractChannelHandlerContext implements ChannelInboundHandler {
 
@@ -263,12 +271,22 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         public void channelRegistered(ChannelHandlerContext ctx) { }
 
         @Override
-        public void channelUnregistered(ChannelHandlerContext ctx) { }
-
-        @Override
         public void channelActive(ChannelHandlerContext ctx) {
             onUnhandledInboundChannelActive();
         }
+
+        @Override
+        public void channelRead(ChannelHandlerContext ctx, Object msg) {
+            onUnhandledInboundMessage(ctx, msg);
+        }
+
+        @Override
+        public void channelReadComplete(ChannelHandlerContext ctx) {
+            onUnhandledInboundChannelReadComplete();
+        }
+
+        @Override
+        public void channelUnregistered(ChannelHandlerContext ctx) { }
 
         @Override
         public void channelInactive(ChannelHandlerContext ctx) {
@@ -296,15 +314,6 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             onUnhandledInboundException(cause);
         }
 
-        @Override
-        public void channelRead(ChannelHandlerContext ctx, Object msg) {
-            onUnhandledInboundMessage(ctx, msg);
-        }
-
-        @Override
-        public void channelReadComplete(ChannelHandlerContext ctx) {
-            onUnhandledInboundChannelReadComplete();
-        }
     }
 
     @Override
@@ -328,27 +337,37 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     public final ChannelPipeline addLast(EventExecutorGroup group, String name, ChannelHandler handler) {
         final AbstractChannelHandlerContext newCtx;
         synchronized (this) {
+
+            // 检查同一个channelHandler实例是否允许被重复添加
             checkMultiplicity(handler);
 
+            // 创建channelHandlerContext包裹channelHandler并封装执行传播事件相关的上下文信息
             newCtx = newContext(group, filterName(name, handler), handler);
 
+            // 将channelHandlerContext插入到pipeline中的末尾处。双向链表操作
+            // 此时channelHandler的状态还是ADD_PENDING，只有当channelHandler的handlerAdded方法被回调后，状态才会为ADD_COMPLETE
             addLast0(newCtx);
 
-            // If the registered is false it means that the channel was not registered on an eventLoop yet.
-            // In this case we add the context to the pipeline and add a task that will call
-            // ChannelHandler.handlerAdded(...) once the channel is registered.
+            //如果当前channel还没有向reactor注册，则将handlerAdded方法的回调添加进pipeline的任务队列中
             if (!registered) {
+                // 这里主要是用来处理ChannelInitializer的情况
+                // 设置channelHandler的状态为ADD_PENDING 即等待添加,当状态变为ADD_COMPLETE时 channelHandler中的handlerAdded会被回调
                 newCtx.setAddPending();
+                // 向pipeline中添加PendingHandlerAddedTask任务，在任务中回调handlerAdded
+                // 当channel注册到reactor后，pipeline中的pendingHandlerCallbackHead任务链表会被挨个执行
                 callHandlerCallbackLater(newCtx, true);
                 return this;
             }
 
+            // 如果当前channel已经向reactor注册成功，那么就直接回调channelHandler中的handlerAddded方法
             EventExecutor executor = newCtx.executor();
             if (!executor.inEventLoop()) {
                 callHandlerAddedInEventLoop(newCtx, executor);
                 return this;
             }
         }
+
+        // 回调channelHandler中的handlerAddded方法
         callHandlerAdded0(newCtx);
         return this;
     }
@@ -425,7 +444,6 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         }
     }
 
-
     /**
      * 回调NioServerSocketChannel中pipeline里的ChannelHandler（也就是ChannelInitializer）的handlerAdded方法
      */
@@ -494,6 +512,39 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         return tail.bind(localAddress, promise);
     }
 
+    @Override
+    public final ChannelPipeline read() {
+        tail.read();
+        return this;
+    }
+
+    @Override
+    public final ChannelFuture write(Object msg) {
+        // 从 pipeline 的尾结点 TailContext 开始在 pipeline 中向前传播 write 事件直到 HeadContext
+        return tail.write(msg);
+    }
+
+    @Override
+    public final ChannelFuture write(Object msg, ChannelPromise promise) {
+        return tail.write(msg, promise);
+    }
+
+    @Override
+    public final ChannelPipeline flush() {
+        tail.flush();
+        return this;
+    }
+
+    @Override
+    public final ChannelFuture writeAndFlush(Object msg, ChannelPromise promise) {
+        return tail.writeAndFlush(msg, promise);
+    }
+
+    @Override
+    public final ChannelFuture writeAndFlush(Object msg) {
+        return tail.writeAndFlush(msg);
+    }
+
     /**
      * 获取计算要发送msg大小的handler
      */
@@ -507,6 +558,24 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         }
         return handle;
     }
+
+    /**
+     * 传播 ChannelRegistered 事件
+     */
+    @Override
+    public final ChannelPipeline fireChannelRegistered() {
+        AbstractChannelHandlerContext.invokeChannelRegistered(head);
+        return this;
+    }
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1127,12 +1196,6 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     }
 
     @Override
-    public final ChannelPipeline fireChannelRegistered() {
-        AbstractChannelHandlerContext.invokeChannelRegistered(head);
-        return this;
-    }
-
-    @Override
     public final ChannelPipeline fireChannelUnregistered() {
         AbstractChannelHandlerContext.invokeChannelUnregistered(head);
         return this;
@@ -1279,12 +1342,6 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     }
 
     @Override
-    public final ChannelPipeline flush() {
-        tail.flush();
-        return this;
-    }
-
-    @Override
     public final ChannelFuture connect(SocketAddress remoteAddress, ChannelPromise promise) {
         return tail.connect(remoteAddress, promise);
     }
@@ -1308,33 +1365,6 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     @Override
     public final ChannelFuture deregister(final ChannelPromise promise) {
         return tail.deregister(promise);
-    }
-
-    @Override
-    public final ChannelPipeline read() {
-        tail.read();
-        return this;
-    }
-
-    @Override
-    public final ChannelFuture write(Object msg) {
-        // 从 pipeline 的尾结点 TailContext 开始在 pipeline 中向前传播 write 事件直到 HeadContext
-        return tail.write(msg);
-    }
-
-    @Override
-    public final ChannelFuture write(Object msg, ChannelPromise promise) {
-        return tail.write(msg, promise);
-    }
-
-    @Override
-    public final ChannelFuture writeAndFlush(Object msg, ChannelPromise promise) {
-        return tail.writeAndFlush(msg, promise);
-    }
-
-    @Override
-    public final ChannelFuture writeAndFlush(Object msg) {
-        return tail.writeAndFlush(msg);
     }
 
     @Override

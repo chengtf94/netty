@@ -121,11 +121,11 @@ public abstract class AbstractNioChannel extends AbstractChannel {
      */
     protected abstract class AbstractNioUnsafe extends AbstractUnsafe implements NioUnsafe {
 
+        /**
+         * 背压机制：用来防止 OOM
+         */
         protected final void removeReadOp() {
             SelectionKey key = selectionKey();
-            // Check first if the key is still valid as it may be canceled as part of the deregistration
-            // from the EventLoop
-            // See https://github.com/netty/netty/issues/2104
             if (!key.isValid()) {
                 return;
             }

@@ -25,7 +25,10 @@ import io.netty.util.concurrent.EventExecutor;
 import java.nio.channels.Channels;
 
 /**
- * ChannelHandlerContext：保存ChannelHandler上下文信息，用于事件传播
+ * ChannelHandlerContext：保存ChannelHandler上下文信息，用于事件传播，也就是封装 ChannelHandler，在代码设计上还是遵循单一职责的原则。
+ * ChannelHandler 是用户接触最频繁的一个 netty 组件，netty 希望用户能够把全部注意力放在最核心的 IO 处理上，用户只需要关心自己对哪些异步事件感兴趣，
+ * 并考虑相应的处理逻辑即可，而并不需要关心异步事件在 pipeline 中如何传递，如何选择具有执行条件的 ChannelHandler 去执行或者跳过。
+ * 这些切面性质的逻辑，netty 将它们作为上下文信息全部封装在 ChannelHandlerContext 中由netty框架本身负责处理。
  */
 public interface ChannelHandlerContext extends AttributeMap, ChannelInboundInvoker, ChannelOutboundInvoker {
 

@@ -153,6 +153,32 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         return pipeline;
     }
 
+    @Override
+    public ChannelFuture write(Object msg) {
+        return pipeline.write(msg);
+    }
+
+    @Override
+    public ChannelFuture write(Object msg, ChannelPromise promise) {
+        return pipeline.write(msg, promise);
+    }
+
+    @Override
+    public Channel flush() {
+        pipeline.flush();
+        return this;
+    }
+
+    @Override
+    public ChannelFuture writeAndFlush(Object msg) {
+        return pipeline.writeAndFlush(msg);
+    }
+
+    @Override
+    public ChannelFuture writeAndFlush(Object msg, ChannelPromise promise) {
+        return pipeline.writeAndFlush(msg, promise);
+    }
+
     /**
      * AbstractUnsafe
      */
@@ -608,15 +634,6 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
-            // As a user may call deregister() from within any method while doing processing in the ChannelPipeline,
-            // we need to ensure we do the actual deregister operation later. This is needed as for example,
-            // we may be in the ByteToMessageDecoder.callDecode(...) method and so still try to do processing in
-            // the old EventLoop while the user already registered the Channel to a new EventLoop. Without delay,
-            // the deregister operation this could lead to have a handler invoked by different EventLoop and so
-            // threads.
-            //
-            // See:
-            // https://github.com/netty/netty/issues/4435
             invokeLater(new Runnable() {
                 @Override
                 public void run() {
@@ -953,15 +970,10 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         return remoteAddress;
     }
 
-    /**
-     * @deprecated no use-case for this.
-     */
     @Deprecated
     protected void invalidateRemoteAddress() {
         remoteAddress = null;
     }
-
-
 
     @Override
     public ChannelFuture bind(SocketAddress localAddress) {
@@ -994,12 +1006,6 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
     }
 
     @Override
-    public Channel flush() {
-        pipeline.flush();
-        return this;
-    }
-
-    @Override
     public ChannelFuture connect(SocketAddress remoteAddress, ChannelPromise promise) {
         return pipeline.connect(remoteAddress, promise);
     }
@@ -1022,26 +1028,6 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
     @Override
     public ChannelFuture deregister(ChannelPromise promise) {
         return pipeline.deregister(promise);
-    }
-
-    @Override
-    public ChannelFuture write(Object msg) {
-        return pipeline.write(msg);
-    }
-
-    @Override
-    public ChannelFuture write(Object msg, ChannelPromise promise) {
-        return pipeline.write(msg, promise);
-    }
-
-    @Override
-    public ChannelFuture writeAndFlush(Object msg) {
-        return pipeline.writeAndFlush(msg);
-    }
-
-    @Override
-    public ChannelFuture writeAndFlush(Object msg, ChannelPromise promise) {
-        return pipeline.writeAndFlush(msg, promise);
     }
 
     @Override
