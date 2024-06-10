@@ -72,17 +72,15 @@ public interface ChannelInboundInvoker {
     ChannelInboundInvoker fireUserEventTriggered(Object event);
 
     /**
-     * A {@link Channel} received a message.
-     *
-     * This will result in having the {@link ChannelInboundHandler#channelRead(ChannelHandlerContext, Object)}
-     * method  called of the next {@link ChannelInboundHandler} contained in the  {@link ChannelPipeline} of the
-     * {@link Channel}.
+     * ChannelRead事件：一次循环读取一次数据，就触发一次ChannelRead事件。
+     * Netty服务端对于一次OP_READ事件的处理，会在一个do{}while()循环read loop中分多次从客户端NioSocketChannel中读取网络数据，
+     * 每次读取我们分配的ByteBuffer容量大小，初始容量为2048。
      */
     ChannelInboundInvoker fireChannelRead(Object msg);
 
     /**
-     * Triggers an {@link ChannelInboundHandler#channelReadComplete(ChannelHandlerContext)}
-     * event to the next {@link ChannelInboundHandler} in the {@link ChannelPipeline}.
+     * ChannelReadComplete事件：当读取不到数据或者不满足continueReading的任意一个条件就会退出read loop，
+     * 这时就会触发ChannelReadComplete事件，表示本次OP_READ事件处理完毕
      */
     ChannelInboundInvoker fireChannelReadComplete();
 

@@ -26,6 +26,9 @@ import static java.lang.Math.min;
  * AdaptiveRecvByteBufAllocator：根据Channel上每次到来的IO数据大小来自适应动态调整ByteBuffer的容量
  * 1）对于服务端NioServerSocketChannel来说，它上边的IO数据就是客户端的连接，它的长度和类型都是固定的，所以在接收客户端连接的时候并不需要这样的一个ByteBuffer来接收，我们会将接收到的客户端连接存放在List<Object> readBuf集合中
  * 2）对于客户端NioSocketChannel来说，它上边的IO数据时客户端发送来的网络数据，长度是不定的，所以才会需要这样一个可以根据每次IO数据的大小来自适应动态调整容量的ByteBuffer来接收。
+ * 注意：
+ * AdaptiveRecvByteBufAllocator并不会真正的去分配ByteBuffer，它只是负责动态调整分配ByteBuffer的大小。
+ * 而真正具体执行内存分配动作的是这里的ByteBufAllocator类型为PooledByteBufAllocator。它会根据AdaptiveRecvByteBufAllocator动态调整出来的大小去真正的申请内存分配ByteBuffer。
  */
 public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufAllocator {
 
@@ -126,6 +129,9 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
         private final int minIndex;
         private final int maxIndex;
         private int index;
+        /**
+         * 预计下一次分配buffer的容量：初始为2048
+         */
         private int nextReceiveBufferSize;
         private boolean decreaseNow;
 
@@ -146,6 +152,7 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
 
         @Override
         public int guess() {
+            // 预计下一次分配buffer的容量：初始为2048
             return nextReceiveBufferSize;
         }
 

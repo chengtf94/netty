@@ -78,15 +78,36 @@ public abstract class DefaultMaxMessagesRecvByteBufAllocator implements MaxMessa
          */
         private int totalMessages;
         /**
+         * 本次事件轮询中某一次读取的字节数
+         * 1）lastBytesRead < 0：表示客户端主动发起了连接关闭流程，Netty开始连接关闭处理流程
+         * 2）lastBytesRead = 0：表示当前NioSocketChannel上的数据已经全部读取完毕，没有数据可读了。本次OP_READ事件圆满处理完毕，可以开开心心的退出read loop
+         * 3）lastBytesRead > 0：表示在本次read loop中从NioSocketChannel中读取到了数据，会在NioSocketChannel的pipeline中触发ChannelRead事件；
+         * 进而在pipeline中负责IO处理的ChannelHandler中响应，处理网络请求
+         */
+        private int lastBytesRead;
+        /**
          * 本次事件轮询总共读取的字节数：主要用于从reactor在接收客户端NioSocketChannel上的网络数据用的
          */
         private int totalBytesRead;
+        /**
+         * 本次事件轮询中某一次尝试读取的字节数：byteBuffer剩余可写的字节数，即当前ByteBuffer预计尝试要写入的字节数
+         */
         private int attemptedBytesRead;
-        private int lastBytesRead;
+        /**
+         * respectMaybeMoreData = true表示要对可能还有更多数据进行处理的这种情况要respect认真对待，
+         * 如果本次循环读取到的数据已经装满ByteBuffer，表示后面可能还有数据，那么就要进行读取。
+         * 如果ByteBuffer还没装满表示已经没有数据可读了那么就退出循环。
+         * respectMaybeMoreData = false表示对可能还有更多数据的这种情况不认真对待 not respect。
+         * 不管本次循环读取数据ByteBuffer是否满载而归，都要继续进行读取，直到读取不到数据在退出循环，属于无脑读取。
+         */
         private final boolean respectMaybeMoreData = DefaultMaxMessagesRecvByteBufAllocator.this.respectMaybeMoreData;
+        /**
+         * 判断本次读取byteBuffer是否满载而归
+         */
         private final UncheckedBooleanSupplier defaultMaybeMoreSupplier = new UncheckedBooleanSupplier() {
             @Override
             public boolean get() {
+                // 判断本次读取byteBuffer是否满载而归，如果是表明可能NioSocketChannel里还有数据，否则表明NioSocketChannel里已经没有数据了
                 return attemptedBytesRead == lastBytesRead;
             }
         };
@@ -111,6 +132,7 @@ public abstract class DefaultMaxMessagesRecvByteBufAllocator implements MaxMessa
 
         @Override
         public boolean continueReading(UncheckedBooleanSupplier maybeMoreDataSupplier) {
+            // !respectMaybeMoreData || maybeMoreDataSupplier.get() 这个条件比较复杂：其实就是通过respectMaybeMoreData字段来控制NioSocketChannel中可能还有数据可读的情况下该如何处理
             // totalMessages < maxMessagePerRead：在接收客户端连接场景中，用于判断主reactor线程在read loop中的读取次数是否超过了16次。如果超过16次就会返回false，主reactor线程退出循环。
             // totalBytesRead > 0：用于判断当客户端NioSocketChannel上的OP_READ事件活跃时，从reactor线程在read loop中是否读取到了网络数据。
             // totalBytesRead > 0：此处有bug，在4.1.69.final中被修复，Issue#11708：https://github.com/netty/netty/issues/11708
@@ -119,18 +141,6 @@ public abstract class DefaultMaxMessagesRecvByteBufAllocator implements MaxMessa
                     totalMessages < maxMessagePerRead &&
                     totalBytesRead > 0;
         }
-
-
-
-
-
-
-
-
-
-
-
-
 
         @Override
         public ByteBuf allocate(ByteBufAllocator alloc) {

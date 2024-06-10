@@ -76,6 +76,24 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         config = new NioSocketChannelConfig(this, socket.socket());
     }
 
+    @Override
+    public SocketChannelConfig config() {
+        return config;
+    }
+
+    @Override
+    protected int doReadBytes(ByteBuf byteBuf) throws Exception {
+        // 直接调用底层JDK NIO的SocketChannel#read方法将数据读取到DirectByteBuffer中。
+        // 读取数据大小为本次分配的DirectByteBuffer容量，初始为2048
+        final RecvByteBufAllocator.Handle allocHandle = unsafe().recvBufAllocHandle();
+        allocHandle.attemptedBytesRead(byteBuf.writableBytes());
+        return byteBuf.writeBytes(javaChannel(), allocHandle.attemptedBytesRead());
+    }
+
+
+
+
+
 
 
 
@@ -88,11 +106,6 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
     @Override
     public ServerSocketChannel parent() {
         return (ServerSocketChannel) super.parent();
-    }
-
-    @Override
-    public SocketChannelConfig config() {
-        return config;
     }
 
     @Override
@@ -320,13 +333,6 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
     protected void doClose() throws Exception {
         super.doClose();
         javaChannel().close();
-    }
-
-    @Override
-    protected int doReadBytes(ByteBuf byteBuf) throws Exception {
-        final RecvByteBufAllocator.Handle allocHandle = unsafe().recvBufAllocHandle();
-        allocHandle.attemptedBytesRead(byteBuf.writableBytes());
-        return byteBuf.writeBytes(javaChannel(), allocHandle.attemptedBytesRead());
     }
 
     @Override
