@@ -36,6 +36,7 @@ public final class DefaultMessageSizeEstimator implements MessageSizeEstimator {
         @Override
         public int size(Object msg) {
             if (msg instanceof ByteBuf) {
+                // ByteBuffer 的大小即为 Buffer 中未读取的字节数 writerIndex - readerIndex
                 return ((ByteBuf) msg).readableBytes();
             }
             if (msg instanceof ByteBufHolder) {

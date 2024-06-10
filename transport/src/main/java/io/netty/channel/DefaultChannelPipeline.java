@@ -54,6 +54,9 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             return new WeakHashMap<Class<?>, String>();
         }
     };
+    /**
+     * 原子更新estimatorHandle字段
+     */
     private static final AtomicReferenceFieldUpdater<DefaultChannelPipeline, MessageSizeEstimator.Handle> ESTIMATOR =
             AtomicReferenceFieldUpdater.newUpdater(
                     DefaultChannelPipeline.class, MessageSizeEstimator.Handle.class, "estimatorHandle");
@@ -73,6 +76,9 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     private final VoidChannelPromise voidPromise;
     private final boolean touch = ResourceLeakDetector.isEnabled();
     private Map<EventExecutorGroup, EventExecutor> childExecutors;
+    /**
+     * 计算要发送msg大小的handler
+     */
     private volatile MessageSizeEstimator.Handle estimatorHandle;
     private boolean firstRegistration = true;
     /**
@@ -142,6 +148,9 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             unsafe.beginRead();
         }
 
+        /**
+         * Netty 真正处理 write 事件的地方
+         */
         @Override
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
             unsafe.write(msg, promise);
@@ -488,15 +497,9 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         return tail.bind(localAddress, promise);
     }
 
-
-
-
-
-
-
-
-
-
+    /**
+     * 获取计算要发送msg大小的handler
+     */
     final MessageSizeEstimator.Handle estimatorHandle() {
         MessageSizeEstimator.Handle handle = estimatorHandle;
         if (handle == null) {
@@ -507,6 +510,21 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         }
         return handle;
     }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     final Object touch(Object msg, AbstractChannelHandlerContext next) {
         return touch ? ReferenceCountUtil.touch(msg, next) : msg;
@@ -1303,6 +1321,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     @Override
     public final ChannelFuture write(Object msg) {
+        // 从 pipeline 的尾结点 TailContext 开始在 pipeline 中向前传播 write 事件直到 HeadContext
         return tail.write(msg);
     }
 

@@ -88,6 +88,9 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     private final DefaultChannelPipeline pipeline;
     private final String name;
     private final boolean ordered;
+    /**
+     * ChannelHandler执行资格掩码
+     */
     private final int executionMask;
 
     // Will be set to null if no child executor should be used, otherwise it will be set to the
@@ -694,6 +697,9 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         }
     }
 
+    /**
+     * 发送数据
+     */
     @Override
     public ChannelFuture write(Object msg) {
         return write(msg, newPromise());
@@ -702,24 +708,90 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     @Override
     public ChannelFuture write(final Object msg, final ChannelPromise promise) {
         write(msg, false, promise);
-
         return promise;
     }
 
+    /**
+     * 发送数据：write 事件会在 pipeline 中向前传播到 HeadContext 中，而在 HeadContext 中才是 Netty 真正处理 write 事件的地方。
+     * 写操作是一个异步操作，当我们在业务线程中调用 channelHandlerContext.write() 后，Netty 会给我们返回一个 ChannelFuture，
+     * 支持添加 ChannelFutureListener ，这样当 Netty 将我们要发送的数据发送到底层 Socket 中时，Netty 会通过 ChannelFutureListener 通知我们写入结果
+     */
+    private void write(Object msg, boolean flush, ChannelPromise promise) {
+
+        // 检查promise的有效性
+        ObjectUtil.checkNotNull(msg, "msg");
+        try {
+            if (isNotValidPromise(promise, true)) {
+                ReferenceCountUtil.release(msg);
+                // cancelled
+                return;
+            }
+        } catch (RuntimeException e) {
+            ReferenceCountUtil.release(msg);
+            throw e;
+        }
+
+        // flush = true 表示channelHandler中调用的是writeAndFlush方法，这里需要找到pipeline中覆盖write或者flush方法的channelHandler
+        // flush = false 表示调用的是write方法，只需要找到pipeline中覆盖write方法的channelHandler
+        final AbstractChannelHandlerContext next = findContextOutbound(flush ?
+                (MASK_WRITE | MASK_FLUSH) : MASK_WRITE);
+        // 用于检查内存泄露
+        final Object m = pipeline.touch(msg, next);
+        // 获取pipeline中下一个要被执行的channelHandler的executor
+        EventExecutor executor = next.executor();
+        // 确保OutBound事件由ChannelHandler指定的executor执行
+        if (executor.inEventLoop()) {
+            // 如果当前线程正是channelHandler指定的executor则直接执行
+            if (flush) {
+                next.invokeWriteAndFlush(m, promise);
+            } else {
+                next.invokeWrite(m, promise);
+            }
+        } else {
+            // 如果当前线程不是ChannelHandler指定的executor,则封装成异步任务提交给指定executor执行，注意这里的executor不一定是reactor线程。
+            final WriteTask task = WriteTask.newInstance(next, m, promise, flush);
+            if (!safeExecute(executor, task, promise, m, !flush)) {
+                task.cancel();
+            }
+        }
+    }
+
+    /**
+     * 发送数据
+     */
     void invokeWrite(Object msg, ChannelPromise promise) {
+        // 判断 nextChannelHandler 是否已经在 pipeline 中被正确的初始化了，
+        // 如果是，则直接调用这个 ChannelHandler 的 write 方法，从而实现 write 事件的传播
         if (invokeHandler()) {
             invokeWrite0(msg, promise);
         } else {
+            // 当前channelHandler虽然添加到pipeline中，但是并没有调用handlerAdded，所以不能调用当前channelHandler中的回调方法，只能继续向前传递write事件
             write(msg, promise);
         }
     }
 
+    /**
+     * 判断 当前channelHandler 中的 handlerAdded 方法是否被回调过
+     */
+    private boolean invokeHandler() {
+        // Store in local variable to reduce volatile reads.
+        int handlerState = this.handlerState;
+        return handlerState == ADD_COMPLETE || (!ordered && handlerState == ADD_PENDING);
+    }
+
     private void invokeWrite0(Object msg, ChannelPromise promise) {
         try {
+            // 调用当前ChannelHandler中的write方法
             ((ChannelOutboundHandler) handler()).write(this, msg, promise);
         } catch (Throwable t) {
             notifyOutboundHandlerException(t, promise);
         }
+    }
+
+    private static void notifyOutboundHandlerException(Throwable cause, ChannelPromise promise) {
+        // Only log if the given promise is not of type VoidChannelPromise as tryFailure(...) is expected to return
+        // false.
+        PromiseNotificationUtil.tryFailure(promise, cause, promise instanceof VoidChannelPromise ? null : logger);
     }
 
     @Override
@@ -770,51 +842,12 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         }
     }
 
-    private void write(Object msg, boolean flush, ChannelPromise promise) {
-        ObjectUtil.checkNotNull(msg, "msg");
-        try {
-            if (isNotValidPromise(promise, true)) {
-                ReferenceCountUtil.release(msg);
-                // cancelled
-                return;
-            }
-        } catch (RuntimeException e) {
-            ReferenceCountUtil.release(msg);
-            throw e;
-        }
-
-        final AbstractChannelHandlerContext next = findContextOutbound(flush ?
-                (MASK_WRITE | MASK_FLUSH) : MASK_WRITE);
-        final Object m = pipeline.touch(msg, next);
-        EventExecutor executor = next.executor();
-        if (executor.inEventLoop()) {
-            if (flush) {
-                next.invokeWriteAndFlush(m, promise);
-            } else {
-                next.invokeWrite(m, promise);
-            }
-        } else {
-            final WriteTask task = WriteTask.newInstance(next, m, promise, flush);
-            if (!safeExecute(executor, task, promise, m, !flush)) {
-                // We failed to submit the WriteTask. We need to cancel it so we decrement the pending bytes
-                // and put it back in the Recycler for re-use later.
-                //
-                // See https://github.com/netty/netty/issues/8343.
-                task.cancel();
-            }
-        }
-    }
-
     @Override
     public ChannelFuture writeAndFlush(Object msg) {
         return writeAndFlush(msg, newPromise());
     }
 
-    private static void notifyOutboundHandlerException(Throwable cause, ChannelPromise promise) {
-        // Only log if the given promise is not of type VoidChannelPromise as tryFailure(...) is expected to return
-        // false.
-        PromiseNotificationUtil.tryFailure(promise, cause, promise instanceof VoidChannelPromise ? null : logger);
-    }
+
 
     @Override
     public ChannelPromise newPromise() {
@@ -884,23 +917,26 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         return ctx;
     }
 
+    /**
+     * 在 pipeline 中找到了下一个具有Outbound出站事件执行资格的 ChannelHandler
+     */
     private AbstractChannelHandlerContext findContextOutbound(int mask) {
         AbstractChannelHandlerContext ctx = this;
         EventExecutor currentExecutor = executor();
         do {
+            // 获取前一个ChannelHandler
             ctx = ctx.prev;
         } while (skipContext(ctx, currentExecutor, mask, MASK_ONLY_OUTBOUND));
         return ctx;
     }
 
+    /**
+     * 判断前一个ChannelHandler是否具有响应XXX事件的资格：true表示无资格
+     */
     private static boolean skipContext(
             AbstractChannelHandlerContext ctx, EventExecutor currentExecutor, int mask, int onlyMask) {
         // Ensure we correctly handle MASK_EXCEPTION_CAUGHT which is not included in the MASK_EXCEPTION_CAUGHT
         return (ctx.executionMask & (onlyMask | mask)) == 0 ||
-                // We can only skip if the EventExecutor is the same as otherwise we need to ensure we offload
-                // everything to preserve ordering.
-                //
-                // See https://github.com/netty/netty/issues/10067
                 (ctx.executor() == currentExecutor && (ctx.executionMask & mask) == 0);
     }
 
@@ -953,19 +989,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         }
     }
 
-    /**
-     * Makes best possible effort to detect if {@link ChannelHandler#handlerAdded(ChannelHandlerContext)} was called
-     * yet. If not return {@code false} and if called or could not detect return {@code true}.
-     *
-     * If this method returns {@code false} we will not invoke the {@link ChannelHandler} but just forward the event.
-     * This is needed as {@link DefaultChannelPipeline} may already put the {@link ChannelHandler} in the linked-list
-     * but not called {@link ChannelHandler#handlerAdded(ChannelHandlerContext)}.
-     */
-    private boolean invokeHandler() {
-        // Store in local variable to reduce volatile reads.
-        int handlerState = this.handlerState;
-        return handlerState == ADD_COMPLETE || (!ordered && handlerState == ADD_PENDING);
-    }
+
 
     @Override
     public boolean isRemoved() {

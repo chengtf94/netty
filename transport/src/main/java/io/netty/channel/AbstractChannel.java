@@ -157,7 +157,10 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
      * AbstractUnsafe
      */
     protected abstract class AbstractUnsafe implements Unsafe {
-
+        /**
+         * 待发送数据缓冲队列：Netty是全异步框架，所以这里需要一个缓冲队列来缓存用户需要发送的数据
+         * 每个客户端 NioSocketChannel 对应一个 ChannelOutboundBuffer 待发送数据缓冲队列
+         */
         private volatile ChannelOutboundBuffer outboundBuffer = new ChannelOutboundBuffer(AbstractChannel.this);
         private RecvByteBufAllocator.Handle recvHandle;
         private boolean inFlush0;
@@ -640,16 +643,13 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         public final void write(Object msg, ChannelPromise promise) {
             assertEventLoop();
 
+            // 获取当前channel对应的待发送数据缓冲队列（支持用户异步写入的核心关键）
             ChannelOutboundBuffer outboundBuffer = this.outboundBuffer;
             if (outboundBuffer == null) {
                 try {
                     // release message now to prevent resource-leak
                     ReferenceCountUtil.release(msg);
                 } finally {
-                    // If the outboundBuffer is null we know the channel was closed and so
-                    // need to fail the future right away. If it is not null the handling of the rest
-                    // will be done in flush0()
-                    // See https://github.com/netty/netty/issues/2362
                     safeSetFailure(promise,
                             newClosedChannelException(initialCloseCause, "write(Object, ChannelPromise)"));
                 }
@@ -658,7 +658,9 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
             int size;
             try {
+                // 过滤message类型：这里只会接受DirectBuffer或者fileRegion类型的msg
                 msg = filterOutboundMessage(msg);
+                // 计算当前msg的大小
                 size = pipeline.estimatorHandle().size(msg);
                 if (size < 0) {
                     size = 0;
@@ -672,7 +674,9 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
+            // 将msg 加入到Netty中的待写入数据缓冲队列ChannelOutboundBuffer中
             outboundBuffer.addMessage(msg, size, promise);
+
         }
 
         @Override

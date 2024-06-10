@@ -197,8 +197,22 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
 
     }
 
-
-
+    @Override
+    protected final Object filterOutboundMessage(Object msg) {
+        if (msg instanceof ByteBuf) {
+            // Netty为了减少数据从 堆内内存 到 堆外内存 的拷贝以及缓解GC的压力，所以这里必须采用 DirectByteBuffer 使用堆外内存来存放网络发送数据
+            ByteBuf buf = (ByteBuf) msg;
+            if (buf.isDirect()) {
+                return msg;
+            }
+            return newDirectBuffer(buf);
+        }
+        if (msg instanceof FileRegion) {
+            return msg;
+        }
+        throw new UnsupportedOperationException(
+                "unsupported message type: " + StringUtil.simpleClassName(msg) + EXPECTED_TYPES);
+    }
 
 
 
@@ -308,25 +322,6 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         } while (writeSpinCount > 0);
 
         incompleteWrite(writeSpinCount < 0);
-    }
-
-    @Override
-    protected final Object filterOutboundMessage(Object msg) {
-        if (msg instanceof ByteBuf) {
-            ByteBuf buf = (ByteBuf) msg;
-            if (buf.isDirect()) {
-                return msg;
-            }
-
-            return newDirectBuffer(buf);
-        }
-
-        if (msg instanceof FileRegion) {
-            return msg;
-        }
-
-        throw new UnsupportedOperationException(
-                "unsupported message type: " + StringUtil.simpleClassName(msg) + EXPECTED_TYPES);
     }
 
     protected final void incompleteWrite(boolean setOpWrite) {
