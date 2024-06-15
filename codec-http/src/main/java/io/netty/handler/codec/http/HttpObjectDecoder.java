@@ -86,36 +86,24 @@ public abstract class HttpObjectDecoder extends ByteToMessageDecoder {
     private State currentState = State.SKIP_CONTROL_CHARS;
 
     /**
-     * Creates a new instance with the default
-     * {@code maxInitialLineLength (4096}}, {@code maxHeaderSize (8192)}, and
-     * {@code maxChunkSize (8192)}.
+     * 构造方法
      */
     protected HttpObjectDecoder() {
         this(DEFAULT_MAX_INITIAL_LINE_LENGTH, DEFAULT_MAX_HEADER_SIZE, DEFAULT_MAX_CHUNK_SIZE,
              DEFAULT_CHUNKED_SUPPORTED);
     }
 
-    /**
-     * Creates a new instance with the specified parameters.
-     */
     protected HttpObjectDecoder(
             int maxInitialLineLength, int maxHeaderSize, int maxChunkSize, boolean chunkedSupported) {
         this(maxInitialLineLength, maxHeaderSize, maxChunkSize, chunkedSupported, DEFAULT_VALIDATE_HEADERS);
     }
 
-    /**
-     * Creates a new instance with the specified parameters.
-     */
     protected HttpObjectDecoder(
             int maxInitialLineLength, int maxHeaderSize, int maxChunkSize,
             boolean chunkedSupported, boolean validateHeaders) {
         this(maxInitialLineLength, maxHeaderSize, maxChunkSize, chunkedSupported, validateHeaders,
              DEFAULT_INITIAL_BUFFER_SIZE);
     }
-
-    /**
-     * Creates a new instance with the specified parameters.
-     */
     protected HttpObjectDecoder(
             int maxInitialLineLength, int maxHeaderSize, int maxChunkSize,
             boolean chunkedSupported, boolean validateHeaders, int initialBufferSize) {
@@ -140,6 +128,9 @@ public abstract class HttpObjectDecoder extends ByteToMessageDecoder {
         this.allowDuplicateContentLengths = allowDuplicateContentLengths;
     }
 
+    /**
+     * 解码
+     */
     @Override
     protected void decode(ChannelHandlerContext ctx, ByteBuf buffer, List<Object> out) throws Exception {
         if (resetRequested) {

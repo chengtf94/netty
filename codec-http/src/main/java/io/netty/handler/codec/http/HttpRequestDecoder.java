@@ -16,7 +16,7 @@
 package io.netty.handler.codec.http;
 
 /**
- * HTTP请求编码器
+ * HTTP请求解码器
  */
 public class HttpRequestDecoder extends HttpObjectDecoder {
 
