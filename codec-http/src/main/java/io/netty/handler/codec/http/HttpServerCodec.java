@@ -28,8 +28,7 @@ import static io.netty.handler.codec.http.HttpObjectDecoder.DEFAULT_MAX_HEADER_S
 import static io.netty.handler.codec.http.HttpObjectDecoder.DEFAULT_MAX_INITIAL_LINE_LENGTH;
 
 /**
- * HTTP服务端解码器：A combination of {@link HttpRequestDecoder} and {@link HttpResponseEncoder}
- * which enables easier server side HTTP implementation.
+ * HTTP服务端解码器
  *
  * @see HttpClientCodec
  */
@@ -40,33 +39,22 @@ public final class HttpServerCodec extends CombinedChannelDuplexHandler<HttpRequ
     private final Queue<HttpMethod> queue = new ArrayDeque<HttpMethod>();
 
     /**
-     * Creates a new instance with the default decoder options
-     * ({@code maxInitialLineLength (4096}}, {@code maxHeaderSize (8192)}, and
-     * {@code maxChunkSize (8192)}).
+     * 构造方法
      */
     public HttpServerCodec() {
         this(DEFAULT_MAX_INITIAL_LINE_LENGTH, DEFAULT_MAX_HEADER_SIZE, DEFAULT_MAX_CHUNK_SIZE);
     }
 
-    /**
-     * Creates a new instance with the specified decoder options.
-     */
     public HttpServerCodec(int maxInitialLineLength, int maxHeaderSize, int maxChunkSize) {
         init(new HttpServerRequestDecoder(maxInitialLineLength, maxHeaderSize, maxChunkSize),
                 new HttpServerResponseEncoder());
     }
 
-    /**
-     * Creates a new instance with the specified decoder options.
-     */
     public HttpServerCodec(int maxInitialLineLength, int maxHeaderSize, int maxChunkSize, boolean validateHeaders) {
         init(new HttpServerRequestDecoder(maxInitialLineLength, maxHeaderSize, maxChunkSize, validateHeaders),
                 new HttpServerResponseEncoder());
     }
 
-    /**
-     * Creates a new instance with the specified decoder options.
-     */
     public HttpServerCodec(int maxInitialLineLength, int maxHeaderSize, int maxChunkSize, boolean validateHeaders,
                            int initialBufferSize) {
         init(
@@ -75,9 +63,6 @@ public final class HttpServerCodec extends CombinedChannelDuplexHandler<HttpRequ
           new HttpServerResponseEncoder());
     }
 
-    /**
-     * Creates a new instance with the specified decoder options.
-     */
     public HttpServerCodec(int maxInitialLineLength, int maxHeaderSize, int maxChunkSize, boolean validateHeaders,
                            int initialBufferSize, boolean allowDuplicateContentLengths) {
         init(new HttpServerRequestDecoder(maxInitialLineLength, maxHeaderSize, maxChunkSize, validateHeaders,
@@ -94,6 +79,9 @@ public final class HttpServerCodec extends CombinedChannelDuplexHandler<HttpRequ
         ctx.pipeline().remove(this);
     }
 
+    /**
+     * HTTP服务端请求解码器
+     */
     private final class HttpServerRequestDecoder extends HttpRequestDecoder {
 
         HttpServerRequestDecoder(int maxInitialLineLength, int maxHeaderSize, int maxChunkSize) {
@@ -131,6 +119,9 @@ public final class HttpServerCodec extends CombinedChannelDuplexHandler<HttpRequ
         }
     }
 
+    /**
+     * HTTP服务端响应编码器
+     */
     private final class HttpServerResponseEncoder extends HttpResponseEncoder {
 
         private HttpMethod method;
