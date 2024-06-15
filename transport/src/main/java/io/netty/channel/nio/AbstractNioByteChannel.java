@@ -79,6 +79,21 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
     protected abstract int doReadBytes(ByteBuf buf) throws Exception;
 
     /**
+     * 判断TCP连接上的读通道是否关闭
+     */
+    protected boolean isInputShutdown0() {
+        return false;
+    }
+
+    /**
+     * 判断是否允许TCP连接半关闭
+     */
+    private static boolean isAllowHalfClosure(ChannelConfig config) {
+        return config instanceof SocketChannelConfig &&
+                ((SocketChannelConfig) config).isAllowHalfClosure();
+    }
+
+    /**
      * NioByteUnsafe：NioSocketChannel中对底层JDK NIO SocketChannel的Unsafe底层操作类
      */
     protected class NioByteUnsafe extends AbstractNioUnsafe {
@@ -127,6 +142,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                         close = allocHandle.lastBytesRead() < 0;
                         if (close) {
                             // There is nothing left to read as we received an EOF.
+                            // -1表示客户端已经发起了连接关闭流程，此时服务端连接状态为 CLOSE_WAIT ，客户端连接状态为 FIN_WAIT2 。
                             readPending = false;
                         }
                         break;
@@ -163,25 +179,35 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             }
         }
 
+        /**
+         * TCP连接正常关闭的处理
+         */
         private void closeOnRead(ChannelPipeline pipeline) {
             if (!isInputShutdown0()) {
                 if (isAllowHalfClosure(config())) {
+                    // TCP连接半关闭处理逻辑
                     shutdownInput();
                     pipeline.fireUserEventTriggered(ChannelInputShutdownEvent.INSTANCE);
                 } else {
+                    // 如果不支持半关闭，则服务端直接调用close方法向客户端发送FIN包，结束close_wait状态进如last_ack状态
                     close(voidPromise());
                 }
             } else {
+                // TCP连接半关闭处理逻辑
                 inputClosedSeenErrorOnRead = true;
                 pipeline.fireUserEventTriggered(ChannelInputShutdownReadComplete.INSTANCE);
             }
         }
 
+        /**
+         * 处理读取异常
+         */
         private void handleReadException(ChannelPipeline pipeline, ByteBuf byteBuf, Throwable cause, boolean close,
                 RecvByteBufAllocator.Handle allocHandle) {
             if (byteBuf != null) {
                 if (byteBuf.isReadable()) {
                     readPending = false;
+                    // 如果发生异常时，已经读取到了部分数据，则触发ChannelRead事件
                     pipeline.fireChannelRead(byteBuf);
                 } else {
                     byteBuf.release();
@@ -332,9 +358,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
      */
     protected abstract ChannelFuture shutdownInput();
 
-    protected boolean isInputShutdown0() {
-        return false;
-    }
+
 
     @Override
     public ChannelMetadata metadata() {
@@ -345,10 +369,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         return isInputShutdown0() && (inputClosedSeenErrorOnRead || !isAllowHalfClosure(config));
     }
 
-    private static boolean isAllowHalfClosure(ChannelConfig config) {
-        return config instanceof SocketChannelConfig &&
-                ((SocketChannelConfig) config).isAllowHalfClosure();
-    }
+
 
 
 

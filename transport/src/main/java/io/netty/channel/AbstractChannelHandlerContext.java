@@ -469,6 +469,11 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     }
 
     @Override
+    public ChannelPromise newPromise() {
+        return new DefaultChannelPromise(channel(), executor());
+    }
+
+    @Override
     public ChannelFuture bind(SocketAddress localAddress) {
         return bind(localAddress, newPromise());
     }
@@ -894,10 +899,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
 
 
 
-    @Override
-    public ChannelPromise newPromise() {
-        return new DefaultChannelPromise(channel(), executor());
-    }
+
 
     @Override
     public ChannelProgressivePromise newProgressivePromise() {

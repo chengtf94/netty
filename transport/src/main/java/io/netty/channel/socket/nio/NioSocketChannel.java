@@ -81,12 +81,21 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         return config;
     }
 
+    /**
+     * 读取数据
+     * @throws Exception 这里会有两种情况抛出异常：
+     * ● 此时Socket接收缓冲区中只有 RST 包，并没有其他正常数据。
+     * ● Socket 接收缓冲区有正常的数据，OP_READ 事件活跃，当调用 doReadBytes 方法从 Channel 中读取数据的过程中，对端发送 RST 强制关闭连接，这时会在读取的过程中抛出 IOException 异常。
+     */
     @Override
     protected int doReadBytes(ByteBuf byteBuf) throws Exception {
         // 直接调用底层JDK NIO的SocketChannel#read方法将数据读取到DirectByteBuffer中。
         // 读取数据大小为本次分配的DirectByteBuffer容量，初始为2048
         final RecvByteBufAllocator.Handle allocHandle = unsafe().recvBufAllocHandle();
         allocHandle.attemptedBytesRead(byteBuf.writableBytes());
+        // 当服务端的内核协议栈接收到来自客户端的 FIN 包后，内核协议栈会向 Socket 的接收缓冲区插入文件结束符 EOF ，表示客户端已经主动发起了关闭连接流程，
+        // 这时 NioSocketChannel 上的 OP_READ 事件活跃，随即 Reactor 线程会在 AbstractNioByteChannel#read 方法中处理 OP_READ 事件。
+        // 读到EOF后，这里会返回-1，表示客户端已经发起了连接关闭流程，此时服务端连接状态为 CLOSE_WAIT ，客户端连接状态为 FIN_WAIT2 。
         return byteBuf.writeBytes(javaChannel(), allocHandle.attemptedBytesRead());
     }
 
@@ -206,15 +215,58 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         }
     }
 
+    @Override
+    protected boolean isInputShutdown0() {
+        return isInputShutdown();
+    }
 
+    @Override
+    public boolean isInputShutdown() {
+        return javaChannel().socket().isInputShutdown() || !isActive();
+    }
 
+    @Override
+    protected void doClose() throws Exception {
+        super.doClose();
+        javaChannel().close();
+    }
 
+    /**
+     * 在 TCP 半关闭的场景下，主动关闭方需要调用 shutdownOutput 方法向被动关闭方发送 FIN包 开始 TCP 半关闭流程。
+     */
+    @Override
+    public ChannelFuture shutdownOutput() {
+        return shutdownOutput(newPromise());
+    }
 
+    @Override
+    public ChannelFuture shutdownOutput(final ChannelPromise promise) {
+        // 必须在 Reactor 线程中完成
+        final EventLoop loop = eventLoop();
+        if (loop.inEventLoop()) {
+            ((AbstractUnsafe) unsafe()).shutdownOutput(promise);
+        } else {
+            loop.execute(new Runnable() {
+                @Override
+                public void run() {
+                    ((AbstractUnsafe) unsafe()).shutdownOutput(promise);
+                }
+            });
+        }
+        return promise;
+    }
 
-
-
-
-
+    @SuppressJava6Requirement(reason = "Usage guarded by java version check")
+    @UnstableApi
+    @Override
+    protected final void doShutdownOutput() throws Exception {
+        // 关闭底层 JDK NIO SocketChannel 的写通道，此时内核协议栈会向对端发送 FIN 发起 TCP 半关闭流程。
+        if (PlatformDependent.javaVersion() >= 7) {
+            javaChannel().shutdownOutput();
+        } else {
+            javaChannel().socket().shutdownOutput();
+        }
+    }
 
 
 
@@ -238,10 +290,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         return javaChannel().socket().isOutputShutdown() || !isActive();
     }
 
-    @Override
-    public boolean isInputShutdown() {
-        return javaChannel().socket().isInputShutdown() || !isActive();
-    }
+
 
     @Override
     public boolean isShutdown() {
@@ -259,47 +308,16 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         return (InetSocketAddress) super.remoteAddress();
     }
 
-    @SuppressJava6Requirement(reason = "Usage guarded by java version check")
-    @UnstableApi
-    @Override
-    protected final void doShutdownOutput() throws Exception {
-        if (PlatformDependent.javaVersion() >= 7) {
-            javaChannel().shutdownOutput();
-        } else {
-            javaChannel().socket().shutdownOutput();
-        }
-    }
 
-    @Override
-    public ChannelFuture shutdownOutput() {
-        return shutdownOutput(newPromise());
-    }
 
-    @Override
-    public ChannelFuture shutdownOutput(final ChannelPromise promise) {
-        final EventLoop loop = eventLoop();
-        if (loop.inEventLoop()) {
-            ((AbstractUnsafe) unsafe()).shutdownOutput(promise);
-        } else {
-            loop.execute(new Runnable() {
-                @Override
-                public void run() {
-                    ((AbstractUnsafe) unsafe()).shutdownOutput(promise);
-                }
-            });
-        }
-        return promise;
-    }
+
 
     @Override
     public ChannelFuture shutdownInput() {
         return shutdownInput(newPromise());
     }
 
-    @Override
-    protected boolean isInputShutdown0() {
-        return isInputShutdown();
-    }
+
 
     @Override
     public ChannelFuture shutdownInput(final ChannelPromise promise) {
@@ -443,11 +461,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         doClose();
     }
 
-    @Override
-    protected void doClose() throws Exception {
-        super.doClose();
-        javaChannel().close();
-    }
+
 
     @Override
     protected int doWriteBytes(ByteBuf buf) throws Exception {
@@ -469,11 +483,14 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         protected Executor prepareToClose() {
             try {
                 if (javaChannel().isOpen() && config().getSoLinger() > 0) {
+                    // 在设置SO_LINGER后，channel会延时关闭，在延时期间我们仍然可以进行读写，会导致eventLoop线程不断的循环浪费CPU资源，所以需要在延时关闭期间 将channel注册的事件全部取消。
                     doDeregister();
+                    // 在设置了SO_LINGER，不管是阻塞socket还是非阻塞socket，在关闭的时候都会发生阻塞，所以这里不能使用Reactor线程来执行关闭任务，否则Reactor线程就会被阻塞。
                     return GlobalEventExecutor.INSTANCE;
                 }
             } catch (Throwable ignore) {
             }
+            // 在没有设置SO_LINGER的情况下，可以使用Reactor线程来执行关闭任务
             return null;
         }
     }

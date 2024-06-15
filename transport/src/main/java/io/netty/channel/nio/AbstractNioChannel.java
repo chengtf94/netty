@@ -346,6 +346,27 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         return selectionKey;
     }
 
+    @Override
+    protected void doClose() throws Exception {
+        ChannelPromise promise = connectPromise;
+        if (promise != null) {
+            // Use tryFailure() instead of setFailure() to avoid the race against cancel().
+            promise.tryFailure(new ClosedChannelException());
+            connectPromise = null;
+        }
+        ScheduledFuture<?> future = connectTimeoutFuture;
+        if (future != null) {
+            future.cancel(false);
+            connectTimeoutFuture = null;
+        }
+    }
+
+
+
+
+
+
+
 
 
 
@@ -521,19 +542,4 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         return buf;
     }
 
-    @Override
-    protected void doClose() throws Exception {
-        ChannelPromise promise = connectPromise;
-        if (promise != null) {
-            // Use tryFailure() instead of setFailure() to avoid the race against cancel().
-            promise.tryFailure(new ClosedChannelException());
-            connectPromise = null;
-        }
-
-        ScheduledFuture<?> future = connectTimeoutFuture;
-        if (future != null) {
-            future.cancel(false);
-            connectTimeoutFuture = null;
-        }
-    }
 }
