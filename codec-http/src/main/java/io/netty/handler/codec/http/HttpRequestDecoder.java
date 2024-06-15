@@ -15,56 +15,17 @@
  */
 package io.netty.handler.codec.http;
 
-import io.netty.buffer.ByteBuf;
-import io.netty.channel.ChannelPipeline;
-import io.netty.handler.codec.TooLongFrameException;
-
-
 /**
- * Decodes {@link ByteBuf}s into {@link HttpRequest}s and {@link HttpContent}s.
- *
- * <h3>Parameters that prevents excessive memory consumption</h3>
- * <table border="1">
- * <tr>
- * <th>Name</th><th>Meaning</th>
- * </tr>
- * <tr>
- * <td>{@code maxInitialLineLength}</td>
- * <td>The maximum length of the initial line (e.g. {@code "GET / HTTP/1.0"})
- *     If the length of the initial line exceeds this value, a
- *     {@link TooLongFrameException} will be raised.</td>
- * </tr>
- * <tr>
- * <td>{@code maxHeaderSize}</td>
- * <td>The maximum length of all headers.  If the sum of the length of each
- *     header exceeds this value, a {@link TooLongFrameException} will be raised.</td>
- * </tr>
- * <tr>
- * <td>{@code maxChunkSize}</td>
- * <td>The maximum length of the content or each chunk.  If the content length
- *     exceeds this value, the transfer encoding of the decoded request will be
- *     converted to 'chunked' and the content will be split into multiple
- *     {@link HttpContent}s.  If the transfer encoding of the HTTP request is
- *     'chunked' already, each chunk will be split into smaller chunks if the
- *     length of the chunk exceeds this value.  If you prefer not to handle
- *     {@link HttpContent}s in your handler, insert {@link HttpObjectAggregator}
- *     after this decoder in the {@link ChannelPipeline}.</td>
- * </tr>
- * </table>
+ * HTTP请求编码器
  */
 public class HttpRequestDecoder extends HttpObjectDecoder {
 
     /**
-     * Creates a new instance with the default
-     * {@code maxInitialLineLength (4096)}, {@code maxHeaderSize (8192)}, and
-     * {@code maxChunkSize (8192)}.
+     * 构造方法
      */
     public HttpRequestDecoder() {
     }
 
-    /**
-     * Creates a new instance with the specified parameters.
-     */
     public HttpRequestDecoder(
             int maxInitialLineLength, int maxHeaderSize, int maxChunkSize) {
         super(maxInitialLineLength, maxHeaderSize, maxChunkSize, DEFAULT_CHUNKED_SUPPORTED);

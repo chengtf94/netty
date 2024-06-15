@@ -22,8 +22,7 @@ import io.netty.util.CharsetUtil;
 import static io.netty.handler.codec.http.HttpConstants.SP;
 
 /**
- * Encodes an {@link HttpRequest} or an {@link HttpContent} into
- * a {@link ByteBuf}.
+ * HTTP请求编码器
  */
 public class HttpRequestEncoder extends HttpObjectEncoder<HttpRequest> {
     private static final char SLASH = '/';

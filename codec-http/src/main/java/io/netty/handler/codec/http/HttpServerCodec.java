@@ -28,7 +28,7 @@ import static io.netty.handler.codec.http.HttpObjectDecoder.DEFAULT_MAX_HEADER_S
 import static io.netty.handler.codec.http.HttpObjectDecoder.DEFAULT_MAX_INITIAL_LINE_LENGTH;
 
 /**
- * A combination of {@link HttpRequestDecoder} and {@link HttpResponseEncoder}
+ * HTTP服务端解码器：A combination of {@link HttpRequestDecoder} and {@link HttpResponseEncoder}
  * which enables easier server side HTTP implementation.
  *
  * @see HttpClientCodec
