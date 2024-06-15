@@ -417,7 +417,9 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 // Always handle shutdown even if the loop processing threw an exception.
                 try {
                     if (isShuttingDown()) {
+                        // 切走程序承担的现有流量：关闭Reactor上注册的所有Channel，停止处理IO事件，触发unActive以及unRegister事件
                         closeAll();
+                        // 保证现有剩余的任务可以执行完毕，保证业务无损：注销掉所有Channel停止处理IO事件之后，剩下的就需要执行Reactor中剩余的异步任务了
                         if (confirmShutdown()) {
                             return;
                         }
@@ -704,9 +706,37 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
     }
 
+    /**
+     * 切走流量：关闭Reactor上注册的所有Channel，停止处理IO事件，触发unActive以及unRegister事件
+     */
+    private void closeAll() {
+        selectAgain();
+        Set<SelectionKey> keys = selector.keys();
+        Collection<AbstractNioChannel> channels = new ArrayList<AbstractNioChannel>(keys.size());
+        for (SelectionKey k : keys) {
+            Object a = k.attachment();
+            if (a instanceof AbstractNioChannel) {
+                channels.add((AbstractNioChannel) a);
+            } else {
+                k.cancel();
+                @SuppressWarnings("unchecked")
+                NioTask<SelectableChannel> task = (NioTask<SelectableChannel>) a;
+                invokeChannelUnregistered(task, k, null);
+            }
+        }
+        // 关闭Reactor上注册的所有Channel，并在pipeline中触发unActive事件和unRegister事件
+        for (AbstractNioChannel ch : channels) {
+            ch.unsafe().close(ch.unsafe().voidPromise());
+        }
+    }
 
-
-
+    private static void invokeChannelUnregistered(NioTask<SelectableChannel> task, SelectionKey k, Throwable cause) {
+        try {
+            task.channelUnregistered(k.channel(), cause);
+        } catch (Exception e) {
+            logger.warn("Unexpected exception while running NioTask.channelUnregistered()", e);
+        }
+    }
 
 
 
@@ -846,34 +876,9 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
     }
 
-    private void closeAll() {
-        selectAgain();
-        Set<SelectionKey> keys = selector.keys();
-        Collection<AbstractNioChannel> channels = new ArrayList<AbstractNioChannel>(keys.size());
-        for (SelectionKey k : keys) {
-            Object a = k.attachment();
-            if (a instanceof AbstractNioChannel) {
-                channels.add((AbstractNioChannel) a);
-            } else {
-                k.cancel();
-                @SuppressWarnings("unchecked")
-                NioTask<SelectableChannel> task = (NioTask<SelectableChannel>) a;
-                invokeChannelUnregistered(task, k, null);
-            }
-        }
 
-        for (AbstractNioChannel ch : channels) {
-            ch.unsafe().close(ch.unsafe().voidPromise());
-        }
-    }
 
-    private static void invokeChannelUnregistered(NioTask<SelectableChannel> task, SelectionKey k, Throwable cause) {
-        try {
-            task.channelUnregistered(k.channel(), cause);
-        } catch (Exception e) {
-            logger.warn("Unexpected exception while running NioTask.channelUnregistered()", e);
-        }
-    }
+
 
     @Override
     protected boolean beforeScheduledTaskSubmitted(long deadlineNanos) {
