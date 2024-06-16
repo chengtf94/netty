@@ -9,16 +9,16 @@ public class RequestPendingCenter {
 
     private Map<Long, OperationResultFuture> map = new ConcurrentHashMap<Long, OperationResultFuture>();
 
-    public void add(Long streamId, OperationResultFuture future){
+    public void add(Long streamId, OperationResultFuture future) {
         this.map.put(streamId, future);
     }
 
-    public void set(Long streamId, OperationResult operationResult){
+    public void set(Long streamId, OperationResult operationResult) {
         OperationResultFuture operationResultFuture = this.map.get(streamId);
         if (operationResultFuture != null) {
             operationResultFuture.setSuccess(operationResult);
             this.map.remove(streamId);
         }
-     }
+    }
 
 }

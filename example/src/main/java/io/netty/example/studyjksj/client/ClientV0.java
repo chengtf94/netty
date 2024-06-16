@@ -32,7 +32,7 @@ public class ClientV0 {
         bootstrap.channel(NioSocketChannel.class);
 
         NioEventLoopGroup group = new NioEventLoopGroup();
-        try{
+        try {
             bootstrap.group(group);
 
             bootstrap.handler(new ChannelInitializer<NioSocketChannel>() {
