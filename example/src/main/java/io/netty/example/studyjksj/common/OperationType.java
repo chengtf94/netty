@@ -1,5 +1,12 @@
 package io.netty.example.studyjksj.common;
 
+import io.netty.example.studyjksj.common.auth.AuthOperation;
+import io.netty.example.studyjksj.common.auth.AuthOperationResult;
+import io.netty.example.studyjksj.common.keepalive.KeepaliveOperation;
+import io.netty.example.studyjksj.common.keepalive.KeepaliveOperationResult;
+import io.netty.example.studyjksj.common.order.OrderOperation;
+import io.netty.example.studyjksj.common.order.OrderOperationResult;
+
 import java.util.function.Predicate;
 
 public enum OperationType {
