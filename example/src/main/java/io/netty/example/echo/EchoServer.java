@@ -1,6 +1,7 @@
 package io.netty.example.echo;
 
 import io.netty.bootstrap.ServerBootstrap;
+import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
@@ -58,6 +59,7 @@ public final class EchoServer {
                     // 两种设置keep-alive风格
 //                    .childOption(ChannelOption.SO_KEEPALIVE, true)
                     .childOption(NioChannelOption.SO_KEEPALIVE, true)
+                    .childOption(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT)
             ;
 
             // Start the server：绑定端口启动服务，开始监听accept事件
