@@ -2,6 +2,12 @@ package io.netty.example.studyjksj.util;
 
 import com.google.gson.Gson;
 
+/**
+ * JSON序列化工具类
+ *
+ * @author: chengtf
+ * @date: 2024/6/17
+ */
 public final class JsonUtil {
 
     private static final Gson GSON = new Gson();

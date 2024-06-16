@@ -18,7 +18,10 @@ import io.netty.handler.logging.LoggingHandler;
 import java.util.concurrent.ExecutionException;
 
 /**
- * 极客时间案例
+ * 点单服务端：极客时间案例
+ *
+ * @author: chengtf
+ * @date: 2024/6/17
  */
 public class Server {
 
@@ -29,7 +32,7 @@ public class Server {
 
         serverBootstrap.handler(new LoggingHandler(LogLevel.INFO));
         NioEventLoopGroup group = new NioEventLoopGroup();
-        try{
+        try {
             serverBootstrap.group(group);
 
             serverBootstrap.childHandler(new ChannelInitializer<NioSocketChannel>() {
@@ -55,8 +58,6 @@ public class Server {
         } finally {
             group.shutdownGracefully();
         }
-
-
     }
 
 }

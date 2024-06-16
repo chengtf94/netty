@@ -3,19 +3,38 @@ package io.netty.example.studyjksj.common;
 import io.netty.buffer.ByteBuf;
 import io.netty.example.studyjksj.util.JsonUtil;
 import lombok.Data;
+import lombok.Getter;
 
 import java.nio.charset.Charset;
 
+/**
+ * 消息
+ *
+ * @author: chengtf
+ * @date: 2024/6/17
+ */
 @Data
 public abstract class Message<T extends MessageBody> {
 
+    /**
+     * 消息头
+     */
     private MessageHeader messageHeader;
+    /**
+     * 消息体
+     */
+    @Getter
     private T messageBody;
 
-    public T getMessageBody(){
-        return messageBody;
-    }
+    /**
+     * 获取消息体解码对应的反序列化类型
+     */
 
+    public abstract Class<T> getMessageBodyDecodeClass(int opcode);
+
+    /**
+     * 编码
+     */
     public void encode(ByteBuf byteBuf) {
         byteBuf.writeInt(messageHeader.getVersion());
         byteBuf.writeLong(messageHeader.getStreamId());
@@ -23,8 +42,9 @@ public abstract class Message<T extends MessageBody> {
         byteBuf.writeBytes(JsonUtil.toJson(messageBody).getBytes());
     }
 
-    public abstract Class<T> getMessageBodyDecodeClass(int opcode);
-
+    /**
+     * 解码
+     */
     public void decode(ByteBuf msg) {
         int version = msg.readInt();
         long streamId = msg.readLong();

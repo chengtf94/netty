@@ -3,10 +3,21 @@ package io.netty.example.studyjksj.common.order;
 import io.netty.example.studyjksj.common.Operation;
 import lombok.Data;
 
+/**
+ * 点单操作
+ *
+ * @author: chengtf
+ * @date: 2024/6/17
+ */
 @Data
 public class OrderOperation extends Operation {
-
+    /**
+     * 桌号
+     */
     private int tableId;
+    /**
+     * 点餐信息
+     */
     private String dish;
 
     public OrderOperation(int tableId, String dish) {
@@ -19,7 +30,7 @@ public class OrderOperation extends Operation {
         System.out.println("order's executing startup with orderRequest: " + toString());
         //execute order logic
         System.out.println("order's executing complete");
-        OrderOperationResult orderResponse = new OrderOperationResult(tableId, dish, true);
-        return orderResponse;
+        return new OrderOperationResult(tableId, dish, true);
     }
+
 }

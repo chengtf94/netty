@@ -18,6 +18,12 @@ import io.netty.handler.logging.LoggingHandler;
 
 import java.util.concurrent.ExecutionException;
 
+/**
+ * 点单客户端：极客时间案例
+ *
+ * @author: chengtf
+ * @date: 2024/6/17
+ */
 public class ClientV0 {
 
     public static void main(String[] args) throws InterruptedException, ExecutionException {

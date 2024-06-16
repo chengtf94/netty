@@ -13,6 +13,12 @@ import io.netty.handler.logging.LoggingHandler;
 
 import java.util.concurrent.ExecutionException;
 
+/**
+ * 点单客户端：极客时间案例
+ *
+ * @author: chengtf
+ * @date: 2024/6/17
+ */
 public class ClientV1 {
 
     public static void main(String[] args) throws InterruptedException, ExecutionException {
@@ -21,7 +27,7 @@ public class ClientV1 {
         bootstrap.channel(NioSocketChannel.class);
 
         NioEventLoopGroup group = new NioEventLoopGroup();
-        try{
+        try {
             bootstrap.group(group);
 
             bootstrap.handler(new ChannelInitializer<NioSocketChannel>() {

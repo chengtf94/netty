@@ -7,7 +7,12 @@ import io.netty.example.studyjksj.common.OperationResult;
 import io.netty.example.studyjksj.common.RequestMessage;
 import io.netty.example.studyjksj.common.ResponseMessage;
 
-
+/**
+ * 点单服务业务处理器
+ *
+ * @author: chengtf
+ * @date: 2024/6/17
+ */
 public class OrderServerProcessHandler extends SimpleChannelInboundHandler<RequestMessage> {
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, RequestMessage requestMessage) throws Exception {
