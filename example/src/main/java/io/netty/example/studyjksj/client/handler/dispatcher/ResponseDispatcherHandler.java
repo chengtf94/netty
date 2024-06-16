@@ -16,4 +16,5 @@ public class ResponseDispatcherHandler extends SimpleChannelInboundHandler<Respo
     protected void channelRead0(ChannelHandlerContext ctx, ResponseMessage responseMessage) throws Exception {
         requestPendingCenter.set(responseMessage.getMessageHeader().getStreamId(), responseMessage.getMessageBody());
     }
+
 }
