@@ -26,6 +26,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 
 /**
+ * 基于固定长度字段存个内容的长度信息的封装成帧解码器
  * A decoder that splits the received {@link ByteBuf}s dynamically by the
  * value of the length field in the message.  It is particularly useful when you
  * decode a binary message which has an integer header field that represents the
@@ -188,10 +189,22 @@ public class LengthFieldBasedFrameDecoder extends ByteToMessageDecoder {
 
     private final ByteOrder byteOrder;
     private final int maxFrameLength;
+    /**
+     * lengthField偏移量
+     */
     private final int lengthFieldOffset;
+    /**
+     * lengthField长度
+     */
     private final int lengthFieldLength;
     private final int lengthFieldEndOffset;
+    /**
+     * length调整
+     */
     private final int lengthAdjustment;
+    /**
+     * 0表示不解码出信息头
+     */
     private final int initialBytesToStrip;
     private final boolean failFast;
     private boolean discardingTooLongFrame;

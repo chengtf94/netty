@@ -23,8 +23,8 @@ import io.netty.channel.ChannelHandlerContext;
 import java.util.List;
 
 /**
- * A decoder that splits the received {@link ByteBuf}s by the fixed number
- * of bytes. For example, if you received the following four fragmented packets:
+ * 基于固定长度的封装成帧解码器
+ * For example, if you received the following four fragmented packets:
  * <pre>
  * +---+----+------+----+
  * | A | BC | DEFG | HI |
@@ -40,12 +40,13 @@ import java.util.List;
  */
 public class FixedLengthFrameDecoder extends ByteToMessageDecoder {
 
+    /**
+     * 固定长度
+     */
     private final int frameLength;
 
     /**
-     * Creates a new instance.
-     *
-     * @param frameLength the length of the frame
+     * 构造方法
      */
     public FixedLengthFrameDecoder(int frameLength) {
         checkPositive(frameLength, "frameLength");
@@ -60,20 +61,14 @@ public class FixedLengthFrameDecoder extends ByteToMessageDecoder {
         }
     }
 
-    /**
-     * Create a frame out of the {@link ByteBuf} and return it.
-     *
-     * @param   ctx             the {@link ChannelHandlerContext} which this {@link ByteToMessageDecoder} belongs to
-     * @param   in              the {@link ByteBuf} from which to read data
-     * @return  frame           the {@link ByteBuf} which represent the frame or {@code null} if no frame could
-     *                          be created.
-     */
-    protected Object decode(
-            @SuppressWarnings("UnusedParameters") ChannelHandlerContext ctx, ByteBuf in) throws Exception {
+    protected Object decode(@SuppressWarnings("UnusedParameters") ChannelHandlerContext ctx, ByteBuf in) throws Exception {
         if (in.readableBytes() < frameLength) {
+            // 半包：无法解码出数据
             return null;
         } else {
+            // 满足解码条件或粘包：可以解码出数据
             return in.readRetainedSlice(frameLength);
         }
     }
+
 }
