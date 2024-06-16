@@ -108,6 +108,9 @@ public class IdleStateHandler extends ChannelDuplexHandler {
         }
     };
 
+    /**
+     * 是否有写的意图，而不是判断是否写成功
+     */
     private final boolean observeOutput;
     private final long readerIdleTimeNanos;
     private final long writerIdleTimeNanos;
@@ -489,10 +492,12 @@ public class IdleStateHandler extends ChannelDuplexHandler {
         protected void run(ChannelHandlerContext ctx) {
             long nextDelay = readerIdleTimeNanos;
             if (!reading) {
+                // 计算是否idle的关键
                 nextDelay -= ticksInNanos() - lastReadTime;
             }
 
             if (nextDelay <= 0) {
+                // 空闲了
                 // Reader is idle - set a new timeout and notify the callback.
                 readerIdleTimeout = schedule(ctx, this, readerIdleTimeNanos, TimeUnit.NANOSECONDS);
 
@@ -506,6 +511,7 @@ public class IdleStateHandler extends ChannelDuplexHandler {
                     ctx.fireExceptionCaught(t);
                 }
             } else {
+                // 重新起来一个监测任务，用nextDelay时间
                 // Read occurred before the timeout - set a new timeout with shorter delay.
                 readerIdleTimeout = schedule(ctx, this, nextDelay, TimeUnit.NANOSECONDS);
             }
