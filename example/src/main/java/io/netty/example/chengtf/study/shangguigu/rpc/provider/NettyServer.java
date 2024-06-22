@@ -1,4 +1,4 @@
-package io.netty.example.chengtf.study.shangguigu.rpc.netty;
+package io.netty.example.chengtf.study.shangguigu.rpc.provider;
 
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
@@ -22,17 +22,14 @@ public class NettyServer {
         startServer0(hostName, port);
     }
 
-    //编写一个方法，完成对NettyServer的初始化和启动
-
+    /**
+     * 编写一个方法，完成对NettyServer的初始化和启动
+     */
     private static void startServer0(String hostname, int port) {
-
         EventLoopGroup bossGroup = new NioEventLoopGroup(1);
         EventLoopGroup workerGroup = new NioEventLoopGroup();
-
         try {
-
             ServerBootstrap serverBootstrap = new ServerBootstrap();
-
             serverBootstrap.group(bossGroup, workerGroup)
                     .channel(NioServerSocketChannel.class)
                     .childHandler(new ChannelInitializer<SocketChannel>() {

@@ -1,7 +1,6 @@
 package io.netty.example.chengtf.study.shangguigu.rpc.consumer;
 
 import io.netty.example.chengtf.study.shangguigu.rpc.api.HelloService;
-import io.netty.example.chengtf.study.shangguigu.rpc.netty.NettyClient;
 
 /**
  * @author: chengtf
@@ -9,16 +8,17 @@ import io.netty.example.chengtf.study.shangguigu.rpc.netty.NettyClient;
  */
 public class ClientBootstrap {
 
-
-    //这里定义协议头
+    /**
+     * 定义协议头
+     */
     public static final String providerName = "HelloService#hello#";
 
     public static void main(String[] args) throws  Exception{
 
-        //创建一个消费者
+        // 创建一个消费者
         NettyClient customer = new NettyClient();
 
-        //创建代理对象
+        // 创建代理对象
         HelloService service = (HelloService) customer.getBean(HelloService.class, providerName);
 
         for (;; ) {
@@ -27,5 +27,6 @@ public class ClientBootstrap {
             String res = service.hello("你好 dubbo~");
             System.out.println("调用的结果 res= " + res);
         }
+
     }
 }
