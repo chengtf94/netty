@@ -6,6 +6,8 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import java.util.concurrent.Callable;
 
 /**
+ * Netty客户端：业务处理器
+ *
  * @author: chengtf
  * @date: 2024/6/17
  */

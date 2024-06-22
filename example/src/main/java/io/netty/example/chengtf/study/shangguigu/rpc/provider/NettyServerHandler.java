@@ -7,7 +7,7 @@ import io.netty.example.chengtf.study.shangguigu.rpc.provider.HelloServiceImpl;
 import io.netty.example.chengtf.study.shangguigu.rpc.provider.ServerBootstrap;
 
 /**
- * 业务处理器
+ * Netty服务端：业务处理器
  *
  * @author: chengtf
  * @date: 2024/6/17

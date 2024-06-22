@@ -15,6 +15,7 @@
  */
 package io.netty.handler.codec.string;
 
+import com.sun.xml.internal.bind.v2.TODO;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandler.Sharable;
 import io.netty.channel.ChannelHandlerContext;
@@ -26,48 +27,27 @@ import io.netty.handler.codec.MessageToMessageDecoder;
 import io.netty.util.internal.ObjectUtil;
 
 import java.nio.charset.Charset;
+import java.nio.charset.CharsetDecoder;
 import java.util.List;
 
 /**
- * Decodes a received {@link ByteBuf} into a {@link String}.  Please
- * note that this decoder must be used with a proper {@link ByteToMessageDecoder}
- * such as {@link DelimiterBasedFrameDecoder} or {@link LineBasedFrameDecoder}
- * if you are using a stream-based transport such as TCP/IP.  A typical setup for a
- * text-based line protocol in a TCP/IP socket would be:
- * <pre>
- * {@link ChannelPipeline} pipeline = ...;
- *
- * // Decoders
- * pipeline.addLast("frameDecoder", new {@link LineBasedFrameDecoder}(80));
- * pipeline.addLast("stringDecoder", new {@link StringDecoder}(CharsetUtil.UTF_8));
- *
- * // Encoder
- * pipeline.addLast("stringEncoder", new {@link StringEncoder}(CharsetUtil.UTF_8));
- * </pre>
- * and then you can use a {@link String} instead of a {@link ByteBuf}
- * as a message:
- * <pre>
- * void channelRead({@link ChannelHandlerContext} ctx, {@link String} msg) {
- *     ch.write("Did you say '" + msg + "'?\n");
- * }
- * </pre>
+ * 字符串解码器
  */
 @Sharable
 public class StringDecoder extends MessageToMessageDecoder<ByteBuf> {
 
-    // TODO Use CharsetDecoder instead.
+    /**
+     * 字符集： TODO Use CharsetDecoder instead.
+     */
     private final Charset charset;
 
     /**
-     * Creates a new instance with the current system character set.
+     * 构造方法
      */
     public StringDecoder() {
         this(Charset.defaultCharset());
     }
 
-    /**
-     * Creates a new instance with the specified character set.
-     */
     public StringDecoder(Charset charset) {
         this.charset = ObjectUtil.checkNotNull(charset, "charset");
     }
@@ -76,4 +56,5 @@ public class StringDecoder extends MessageToMessageDecoder<ByteBuf> {
     protected void decode(ChannelHandlerContext ctx, ByteBuf msg, List<Object> out) throws Exception {
         out.add(msg.toString(charset));
     }
+
 }

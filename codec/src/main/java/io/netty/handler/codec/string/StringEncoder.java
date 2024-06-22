@@ -15,12 +15,9 @@
  */
 package io.netty.handler.codec.string;
 
-import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.channel.ChannelHandler.Sharable;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelPipeline;
-import io.netty.handler.codec.LineBasedFrameDecoder;
 import io.netty.handler.codec.MessageToMessageEncoder;
 import io.netty.util.internal.ObjectUtil;
 
@@ -29,41 +26,23 @@ import java.nio.charset.Charset;
 import java.util.List;
 
 /**
- * Encodes the requested {@link String} into a {@link ByteBuf}.
- * A typical setup for a text-based line protocol in a TCP/IP socket would be:
- * <pre>
- * {@link ChannelPipeline} pipeline = ...;
- *
- * // Decoders
- * pipeline.addLast("frameDecoder", new {@link LineBasedFrameDecoder}(80));
- * pipeline.addLast("stringDecoder", new {@link StringDecoder}(CharsetUtil.UTF_8));
- *
- * // Encoder
- * pipeline.addLast("stringEncoder", new {@link StringEncoder}(CharsetUtil.UTF_8));
- * </pre>
- * and then you can use a {@link String} instead of a {@link ByteBuf}
- * as a message:
- * <pre>
- * void channelRead({@link ChannelHandlerContext} ctx, {@link String} msg) {
- *     ch.write("Did you say '" + msg + "'?\n");
- * }
- * </pre>
+ * 字符串编码器
  */
 @Sharable
 public class StringEncoder extends MessageToMessageEncoder<CharSequence> {
 
+    /**
+     * 字符集
+     */
     private final Charset charset;
 
     /**
-     * Creates a new instance with the current system character set.
+     * 构造方法
      */
     public StringEncoder() {
         this(Charset.defaultCharset());
     }
 
-    /**
-     * Creates a new instance with the specified character set.
-     */
     public StringEncoder(Charset charset) {
         this.charset = ObjectUtil.checkNotNull(charset, "charset");
     }
@@ -73,7 +52,6 @@ public class StringEncoder extends MessageToMessageEncoder<CharSequence> {
         if (msg.length() == 0) {
             return;
         }
-
         out.add(ByteBufUtil.encodeString(ctx.alloc(), CharBuffer.wrap(msg), charset));
     }
 }

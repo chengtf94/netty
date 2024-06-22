@@ -8,7 +8,10 @@ package io.netty.example.chengtf.study.shangguigu.rpc.provider;
  */
 public class ServerBootstrap {
 
-    public static final String providerName = "HelloService#hello#";
+    /**
+     * 定义协议头
+     */
+    public static final String providerName = "io.netty.example.chengtf.study.shangguigu.rpc.api.HelloService#hello";
 
     public static void main(String[] args) {
         NettyServer.startServer("127.0.0.1", 7000);

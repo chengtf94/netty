@@ -11,7 +11,7 @@ public class ClientBootstrap {
     /**
      * 定义协议头
      */
-    public static final String providerName = "HelloService#hello#";
+    public static final String providerName = "io.netty.example.chengtf.study.shangguigu.rpc.api.HelloService#hello";
 
     public static void main(String[] args) throws  Exception{
 
@@ -23,7 +23,7 @@ public class ClientBootstrap {
 
         for (;; ) {
             Thread.sleep(2 * 1000);
-            //通过代理对象调用服务提供者的方法(服务)
+            // 通过代理对象调用服务提供者的方法(服务)
             String res = service.hello("你好 dubbo~");
             System.out.println("调用的结果 res= " + res);
         }
