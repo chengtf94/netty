@@ -33,8 +33,9 @@ import java.util.concurrent.Callable;
 @Sharable
 public class EchoServerHandler extends ChannelInboundHandlerAdapter {
 
-    // group 就是充当业务线程池，可以将任务提交到该线程池
-    // 这里我们创建了16个线程
+    /**
+     * 业务线程池
+     */
     static final EventExecutorGroup group = new DefaultEventExecutorGroup(16);
 
     @Override
