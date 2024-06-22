@@ -38,7 +38,8 @@ import java.nio.channels.SelectionKey;
 import static io.netty.channel.internal.ChannelUtils.WRITE_STATUS_SNDBUF_FULL;
 
 /**
- * {@link AbstractNioChannel} base class for {@link Channel}s that operate on bytes.
+ * AbstractNioByteChannel：客户端NioSocketChannel主要处理的是服务端与客户端的通信，这里涉及到接收客户端发送来的数据，
+ * 而从Reactor线程从NioSocketChannel中读取的正是网络通信数据单位为Byte。
  */
 public abstract class AbstractNioByteChannel extends AbstractNioChannel {
     private static final ChannelMetadata METADATA = new ChannelMetadata(false, 16);
@@ -46,6 +47,9 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             " (expected: " + StringUtil.simpleClassName(ByteBuf.class) + ", " +
             StringUtil.simpleClassName(FileRegion.class) + ')';
 
+    /**
+     * flush任务
+     */
     private final Runnable flushTask = new Runnable() {
         @Override
         public void run() {
@@ -57,22 +61,11 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
     private boolean inputClosedSeenErrorOnRead;
 
     /**
-     * Create a new instance
-     *
-     * @param parent            the parent {@link Channel} by which this instance was created. May be {@code null}
-     * @param ch                the underlying {@link SelectableChannel} on which it operates
+     * 构造方法
      */
     protected AbstractNioByteChannel(Channel parent, SelectableChannel ch) {
+        // 客户端NioSocketChannel向从Reactor注册的是SelectionKey.OP_READ事件
         super(parent, ch, SelectionKey.OP_READ);
-    }
-
-    /**
-     * Shutdown the input side of the channel.
-     */
-    protected abstract ChannelFuture shutdownInput();
-
-    protected boolean isInputShutdown0() {
-        return false;
     }
 
     @Override
@@ -80,41 +73,141 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         return new NioByteUnsafe();
     }
 
-    @Override
-    public ChannelMetadata metadata() {
-        return METADATA;
+    /**
+     * 从NioSocketChannel中读取数据
+     */
+    protected abstract int doReadBytes(ByteBuf buf) throws Exception;
+
+    /**
+     * 判断TCP连接上的读通道是否关闭
+     */
+    protected boolean isInputShutdown0() {
+        return false;
     }
 
-    final boolean shouldBreakReadReady(ChannelConfig config) {
-        return isInputShutdown0() && (inputClosedSeenErrorOnRead || !isAllowHalfClosure(config));
-    }
-
+    /**
+     * 判断是否允许TCP连接半关闭
+     */
     private static boolean isAllowHalfClosure(ChannelConfig config) {
         return config instanceof SocketChannelConfig &&
                 ((SocketChannelConfig) config).isAllowHalfClosure();
     }
 
+    /**
+     * NioByteUnsafe：NioSocketChannel中对底层JDK NIO SocketChannel的Unsafe底层操作类
+     */
     protected class NioByteUnsafe extends AbstractNioUnsafe {
 
+        /**
+         * 处理客户端读事件OP_READ
+         */
+        @Override
+        public final void read() {
+
+            // 处理连接半关闭
+            final ChannelConfig config = config();
+            if (shouldBreakReadReady(config)) {
+                clearReadPending();
+                return;
+            }
+
+            // 获取NioSocketChannel的pipeline
+            final ChannelPipeline pipeline = pipeline();
+
+            // 获取PooledByteBufAllocator：具体用于实际分配ByteBuf的分配器
+            final ByteBufAllocator allocator = config.getAllocator();
+
+            // 获取自适应ByteBuf分配器AdaptiveRecvByteBufAllocator ：用于动态调节ByteBuf容量，需要与具体的ByteBuf分配器配合使用 例如PooledByteBufAllocator
+            final RecvByteBufAllocator.Handle allocHandle = recvBufAllocHandle();
+
+            // allocHandler用于统计每次读取数据的大小，方便下次分配合适大小的ByteBuf
+            // 重置清除上次的统计指标
+            allocHandle.reset(config);
+
+            ByteBuf byteBuf = null;
+            boolean close = false;
+            try {
+                do {
+                    // 利用PooledByteBufAllocator分配合适大小的byteBuf 初始大小为2048
+                    byteBuf = allocHandle.allocate(allocator);
+
+                    // 记录本次读取了多少字节数
+                    allocHandle.lastBytesRead(doReadBytes(byteBuf));
+
+                    // 如果本次没有读取到任何字节，则退出循环 进行下一轮事件轮询
+                    if (allocHandle.lastBytesRead() <= 0) {
+                        // nothing was read. release the buffer.
+                        byteBuf.release();
+                        byteBuf = null;
+                        close = allocHandle.lastBytesRead() < 0;
+                        if (close) {
+                            // There is nothing left to read as we received an EOF.
+                            // -1表示客户端已经发起了连接关闭流程，此时服务端连接状态为 CLOSE_WAIT ，客户端连接状态为 FIN_WAIT2 。
+                            readPending = false;
+                        }
+                        break;
+                    }
+
+                    // read loop读取数据次数+1
+                    allocHandle.incMessagesRead(1);
+                    readPending = false;
+
+                    // 客户端NioSocketChannel的pipeline中触发ChannelRead事件
+                    pipeline.fireChannelRead(byteBuf);
+
+                    // 解除本次读取数据分配的ByteBuffer引用，方便下一轮read loop分配
+                    byteBuf = null;
+
+                } while (allocHandle.continueReading());
+
+                // 根据本次read loop总共读取的字节数，决定下次是否扩容或者缩容
+                allocHandle.readComplete();
+
+                // 在NioSocketChannel的pipeline中触发ChannelReadComplete事件，表示一次read事件处理完毕
+                // 但这并不表示 客户端发送来的数据已经全部读完，因为如果数据太多的话，这里只会读取16次，剩下的会等到下次read事件到来后在处理
+                pipeline.fireChannelReadComplete();
+
+                if (close) {
+                    closeOnRead(pipeline);
+                }
+            } catch (Throwable t) {
+                handleReadException(pipeline, byteBuf, t, close, allocHandle);
+            } finally {
+                if (!readPending && !config.isAutoRead()) {
+                    removeReadOp();
+                }
+            }
+        }
+
+        /**
+         * TCP连接正常关闭的处理
+         */
         private void closeOnRead(ChannelPipeline pipeline) {
             if (!isInputShutdown0()) {
                 if (isAllowHalfClosure(config())) {
+                    // TCP连接半关闭处理逻辑
                     shutdownInput();
                     pipeline.fireUserEventTriggered(ChannelInputShutdownEvent.INSTANCE);
                 } else {
+                    // 如果不支持半关闭，则服务端直接调用close方法向客户端发送FIN包，结束close_wait状态进如last_ack状态
                     close(voidPromise());
                 }
             } else {
+                // TCP连接半关闭处理逻辑
                 inputClosedSeenErrorOnRead = true;
                 pipeline.fireUserEventTriggered(ChannelInputShutdownReadComplete.INSTANCE);
             }
         }
 
+        /**
+         * 处理读取异常
+         */
         private void handleReadException(ChannelPipeline pipeline, ByteBuf byteBuf, Throwable cause, boolean close,
                 RecvByteBufAllocator.Handle allocHandle) {
             if (byteBuf != null) {
                 if (byteBuf.isReadable()) {
                     readPending = false;
+                    // 如果发生异常时，已经读取到了部分数据，则触发ChannelRead事件
                     pipeline.fireChannelRead(byteBuf);
                 } else {
                     byteBuf.release();
@@ -131,82 +224,42 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             }
         }
 
-        @Override
-        public final void read() {
-            final ChannelConfig config = config();
-            if (shouldBreakReadReady(config)) {
-                clearReadPending();
-                return;
+    }
+
+    @Override
+    protected final Object filterOutboundMessage(Object msg) {
+        if (msg instanceof ByteBuf) {
+            // Netty为了减少数据从 堆内内存 到 堆外内存 的拷贝以及缓解GC的压力，所以这里必须采用 DirectByteBuffer 使用堆外内存来存放网络发送数据
+            ByteBuf buf = (ByteBuf) msg;
+            if (buf.isDirect()) {
+                return msg;
             }
-            final ChannelPipeline pipeline = pipeline();
-            final ByteBufAllocator allocator = config.getAllocator();
-            final RecvByteBufAllocator.Handle allocHandle = recvBufAllocHandle();
-            allocHandle.reset(config);
+            return newDirectBuffer(buf);
+        }
+        if (msg instanceof FileRegion) {
+            return msg;
+        }
+        throw new UnsupportedOperationException(
+                "unsupported message type: " + StringUtil.simpleClassName(msg) + EXPECTED_TYPES);
+    }
 
-            ByteBuf byteBuf = null;
-            boolean close = false;
-            try {
-                do {
-                    byteBuf = allocHandle.allocate(allocator);
-                    allocHandle.lastBytesRead(doReadBytes(byteBuf));
-                    if (allocHandle.lastBytesRead() <= 0) {
-                        // nothing was read. release the buffer.
-                        byteBuf.release();
-                        byteBuf = null;
-                        close = allocHandle.lastBytesRead() < 0;
-                        if (close) {
-                            // There is nothing left to read as we received an EOF.
-                            readPending = false;
-                        }
-                        break;
-                    }
-
-                    allocHandle.incMessagesRead(1);
-                    readPending = false;
-                    pipeline.fireChannelRead(byteBuf);
-                    byteBuf = null;
-                } while (allocHandle.continueReading());
-
-                allocHandle.readComplete();
-                pipeline.fireChannelReadComplete();
-
-                if (close) {
-                    closeOnRead(pipeline);
-                }
-            } catch (Throwable t) {
-                handleReadException(pipeline, byteBuf, t, close, allocHandle);
-            } finally {
-                // Check if there is a readPending which was not processed yet.
-                // This could be for two reasons:
-                // * The user called Channel.read() or ChannelHandlerContext.read() in channelRead(...) method
-                // * The user called Channel.read() or ChannelHandlerContext.read() in channelReadComplete(...) method
-                //
-                // See https://github.com/netty/netty/issues/2254
-                if (!readPending && !config.isAutoRead()) {
-                    removeReadOp();
-                }
-            }
+    protected final void clearOpWrite() {
+        final SelectionKey key = selectionKey();
+        if (!key.isValid()) {
+            return;
+        }
+        final int interestOps = key.interestOps();
+        if ((interestOps & SelectionKey.OP_WRITE) != 0) {
+            key.interestOps(interestOps & ~SelectionKey.OP_WRITE);
         }
     }
 
     /**
      * Write objects to the OS.
-     * @param in the collection which contains objects to write.
-     * @return The value that should be decremented from the write quantum which starts at
-     * {@link ChannelConfig#getWriteSpinCount()}. The typical use cases are as follows:
-     * <ul>
-     *     <li>0 - if no write was attempted. This is appropriate if an empty {@link ByteBuf} (or other empty content)
-     *     is encountered</li>
-     *     <li>1 - if a single call to write data was made to the OS</li>
-     *     <li>{@link ChannelUtils#WRITE_STATUS_SNDBUF_FULL} - if an attempt to write data was made to the OS, but no
-     *     data was accepted</li>
-     * </ul>
-     * @throws Exception if an I/O exception occurs during write.
      */
     protected final int doWrite0(ChannelOutboundBuffer in) throws Exception {
         Object msg = in.current();
         if (msg == null) {
-            // Directly return here so incompleteWrite(...) is not called.
             return 0;
         }
         return doWriteInternal(in, in.current());
@@ -229,12 +282,13 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                 return 1;
             }
         } else if (msg instanceof FileRegion) {
+            // 若文件已经传输完毕，则返回0
             FileRegion region = (FileRegion) msg;
             if (region.transferred() >= region.count()) {
                 in.remove();
                 return 0;
             }
-
+            // 零拷贝的方式传输文件，返回1
             long localFlushedAmount = doWriteFileRegion(region);
             if (localFlushedAmount > 0) {
                 in.progress(localFlushedAmount);
@@ -247,8 +301,77 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             // Should not reach here.
             throw new Error();
         }
+        // 走到这里表示 此时Socket已经写不进去了 退出writeLoop，注册OP_WRITE事件，返回Integer.MAX_VALUE
         return WRITE_STATUS_SNDBUF_FULL;
     }
+
+
+    protected final void incompleteWrite(boolean setOpWrite) {
+        // Did not write completely.
+        if (setOpWrite) {
+            // 这里处理还没写满16次 但是socket缓冲区已满写不进去的情况 注册write事件：什么时候socket可写了， epoll会通知reactor线程继续写
+            setOpWrite();
+        } else {
+            // 必须清除OP_WRITE事件，此时Socket对应的缓冲区依然是可写的，只不过当前channel写够了16次，被SubReactor限制了。
+            // 这样SubReactor可以腾出手来处理其他channel上的IO事件。这里如果不清除OP_WRITE事件，则会一直被通知。
+            clearOpWrite();
+            // 如果本次writeLoop还没写完，则提交flushTask到reactor
+            // Netty 会将 channel 中剩下的待写数据的 flush 操作封装程 flushTask，丢进 reactor 的普通任务队列中，
+            // 等待 reactor 执行完其他 channel 上的 io 操作后在回过头来执行未写完的 flush 任务
+            eventLoop().execute(flushTask);
+        }
+    }
+
+    /**
+     * 向 Reactor 注册 OP_WRITE 事件
+     */
+    protected final void setOpWrite() {
+        final SelectionKey key = selectionKey();
+        if (!key.isValid()) {
+            return;
+        }
+        final int interestOps = key.interestOps();
+        if ((interestOps & SelectionKey.OP_WRITE) == 0) {
+            key.interestOps(interestOps | SelectionKey.OP_WRITE);
+        }
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    /**
+     * Shutdown the input side of the channel.
+     */
+    protected abstract ChannelFuture shutdownInput();
+
+
+
+    @Override
+    public ChannelMetadata metadata() {
+        return METADATA;
+    }
+
+    final boolean shouldBreakReadReady(ChannelConfig config) {
+        return isInputShutdown0() && (inputClosedSeenErrorOnRead || !isAllowHalfClosure(config));
+    }
+
+
+
+
 
     @Override
     protected void doWrite(ChannelOutboundBuffer in) throws Exception {
@@ -267,40 +390,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         incompleteWrite(writeSpinCount < 0);
     }
 
-    @Override
-    protected final Object filterOutboundMessage(Object msg) {
-        if (msg instanceof ByteBuf) {
-            ByteBuf buf = (ByteBuf) msg;
-            if (buf.isDirect()) {
-                return msg;
-            }
 
-            return newDirectBuffer(buf);
-        }
-
-        if (msg instanceof FileRegion) {
-            return msg;
-        }
-
-        throw new UnsupportedOperationException(
-                "unsupported message type: " + StringUtil.simpleClassName(msg) + EXPECTED_TYPES);
-    }
-
-    protected final void incompleteWrite(boolean setOpWrite) {
-        // Did not write completely.
-        if (setOpWrite) {
-            setOpWrite();
-        } else {
-            // It is possible that we have set the write OP, woken up by NIO because the socket is writable, and then
-            // use our write quantum. In this case we no longer want to set the write OP because the socket is still
-            // writable (as far as we know). We will find out next time we attempt to write if the socket is writable
-            // and set the write OP if necessary.
-            clearOpWrite();
-
-            // Schedule flush again later so other tasks can be picked up in the meantime
-            eventLoop().execute(flushTask);
-        }
-    }
 
     /**
      * Write a {@link FileRegion}
@@ -311,42 +401,13 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
     protected abstract long doWriteFileRegion(FileRegion region) throws Exception;
 
     /**
-     * Read bytes into the given {@link ByteBuf} and return the amount.
-     */
-    protected abstract int doReadBytes(ByteBuf buf) throws Exception;
-
-    /**
      * Write bytes form the given {@link ByteBuf} to the underlying {@link java.nio.channels.Channel}.
      * @param buf           the {@link ByteBuf} from which the bytes should be written
      * @return amount       the amount of written bytes
      */
     protected abstract int doWriteBytes(ByteBuf buf) throws Exception;
 
-    protected final void setOpWrite() {
-        final SelectionKey key = selectionKey();
-        // Check first if the key is still valid as it may be canceled as part of the deregistration
-        // from the EventLoop
-        // See https://github.com/netty/netty/issues/2104
-        if (!key.isValid()) {
-            return;
-        }
-        final int interestOps = key.interestOps();
-        if ((interestOps & SelectionKey.OP_WRITE) == 0) {
-            key.interestOps(interestOps | SelectionKey.OP_WRITE);
-        }
-    }
 
-    protected final void clearOpWrite() {
-        final SelectionKey key = selectionKey();
-        // Check first if the key is still valid as it may be canceled as part of the deregistration
-        // from the EventLoop
-        // See https://github.com/netty/netty/issues/2104
-        if (!key.isValid()) {
-            return;
-        }
-        final int interestOps = key.interestOps();
-        if ((interestOps & SelectionKey.OP_WRITE) != 0) {
-            key.interestOps(interestOps & ~SelectionKey.OP_WRITE);
-        }
-    }
+
+
 }

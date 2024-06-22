@@ -25,10 +25,13 @@ import io.netty.util.internal.StringUtil;
 import java.util.Map;
 
 /**
- * Exposes the configuration of a {@link ServerBootstrapConfig}.
+ * ServerBootstrap配置
  */
 public final class ServerBootstrapConfig extends AbstractBootstrapConfig<ServerBootstrap, ServerChannel> {
 
+    /**
+     * 构造方法
+     */
     ServerBootstrapConfig(ServerBootstrap bootstrap) {
         super(bootstrap);
     }
@@ -37,12 +40,15 @@ public final class ServerBootstrapConfig extends AbstractBootstrapConfig<ServerB
     public EventLoopGroup childGroup() {
         return bootstrap.childGroup();
     }
+
     public ChannelHandler childHandler() {
         return bootstrap.childHandler();
     }
+
     public Map<ChannelOption<?>, Object> childOptions() {
         return bootstrap.childOptions();
     }
+
     public Map<AttributeKey<?>, Object> childAttrs() {
         return bootstrap.childAttrs();
     }

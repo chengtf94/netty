@@ -18,60 +18,60 @@ package io.netty.util.internal;
 import io.netty.util.Recycler;
 
 /**
- * Light-weight object pool.
- *
- * @param <T> the type of the pooled object
+ * 轻量级对象池顶层抽象：定义了对象池的行为，以及各种顶层接口。
  */
 public abstract class ObjectPool<T> {
 
-    ObjectPool() { }
+    ObjectPool() {
+    }
 
     /**
-     * Get a {@link Object} from the {@link ObjectPool}. The returned {@link Object} may be created via
-     * {@link ObjectCreator#newObject(Handle)} if no pooled {@link Object} is ready to be reused.
+     * 从对象池获取对象
      */
     public abstract T get();
 
     /**
-     * Handle for an pooled {@link Object} that will be used to notify the {@link ObjectPool} once it can
-     * reuse the pooled {@link Object} again.
-     * @param <T>
+     * Handle是池化对象在对象池中的一个模型，里面包裹了池化对象，并包含了池化对象的一些回收信息，以及池化对象的回收状态。
+     * 默认实现是DefaultHandle
      */
     public interface Handle<T> {
         /**
-         * Recycle the {@link Object} if possible and so make it ready to be reused.
+         * 将对象回收至对象池
          */
         void recycle(T self);
     }
 
     /**
-     * Creates a new Object which references the given {@link Handle} and calls {@link Handle#recycle(Object)} once
-     * it can be re-used.
-     *
-     * @param <T> the type of the pooled object
+     * 对象池创建对象的行为接口
      */
     public interface ObjectCreator<T> {
-
         /**
-         * Creates an returns a new {@link Object} that can be used and later recycled via
-         * {@link Handle#recycle(Object)}.
+         * 创建对象
          */
         T newObject(Handle<T> handle);
     }
 
     /**
-     * Creates a new {@link ObjectPool} which will use the given {@link ObjectCreator} to create the {@link Object}
-     * that should be pooled.
+     * 创建对象池
      */
     public static <T> ObjectPool<T> newPool(final ObjectCreator<T> creator) {
         return new RecyclerObjectPool<T>(ObjectUtil.checkNotNull(creator, "creator"));
     }
 
+    /**
+     * Recycler对象池
+     */
     private static final class RecyclerObjectPool<T> extends ObjectPool<T> {
+        /**
+         * recycler对象池实例：也就是真正的对象池
+         */
         private final Recycler<T> recycler;
 
+        /**
+         * 构造方法
+         */
         RecyclerObjectPool(final ObjectCreator<T> creator) {
-             recycler = new Recycler<T>() {
+            recycler = new Recycler<T>() {
                 @Override
                 protected T newObject(Handle<T> handle) {
                     return creator.newObject(handle);
@@ -84,4 +84,5 @@ public abstract class ObjectPool<T> {
             return recycler.get();
         }
     }
+
 }

@@ -44,27 +44,42 @@ import static io.netty.util.internal.ObjectUtil.checkPositiveOrZero;
  * The default {@link ChannelConfig} implementation.
  */
 public class DefaultChannelConfig implements ChannelConfig {
+
     private static final MessageSizeEstimator DEFAULT_MSG_SIZE_ESTIMATOR = DefaultMessageSizeEstimator.DEFAULT;
-
     private static final int DEFAULT_CONNECT_TIMEOUT = 30000;
-
     private static final AtomicIntegerFieldUpdater<DefaultChannelConfig> AUTOREAD_UPDATER =
             AtomicIntegerFieldUpdater.newUpdater(DefaultChannelConfig.class, "autoRead");
     private static final AtomicReferenceFieldUpdater<DefaultChannelConfig, WriteBufferWaterMark> WATERMARK_UPDATER =
             AtomicReferenceFieldUpdater.newUpdater(
                     DefaultChannelConfig.class, WriteBufferWaterMark.class, "writeBufferWaterMark");
 
+    /**
+     * Channel
+     */
     protected final Channel channel;
-
+    /**
+     * PooledByteBufAllocator
+     */
     private volatile ByteBufAllocator allocator = ByteBufAllocator.DEFAULT;
+    /**
+     * AdaptiveRecvByteBufAllocator
+     */
     private volatile RecvByteBufAllocator rcvBufAllocator;
     private volatile MessageSizeEstimator msgSizeEstimator = DEFAULT_MSG_SIZE_ESTIMATOR;
-
     private volatile int connectTimeoutMillis = DEFAULT_CONNECT_TIMEOUT;
+    /**
+     * write loop 最大循环写入次数：默认为 16
+     */
     private volatile int writeSpinCount = 16;
+    /**
+     * autoRead：一种背压机制，用来防止 OOM
+     */
     @SuppressWarnings("FieldMayBeFinal")
     private volatile int autoRead = 1;
     private volatile boolean autoClose = true;
+    /**
+     * ChannelOutboundBuffer中的高低水位线
+     */
     private volatile WriteBufferWaterMark writeBufferWaterMark = WriteBufferWaterMark.DEFAULT;
     private volatile boolean pinEventExecutor = true;
 
@@ -78,6 +93,44 @@ public class DefaultChannelConfig implements ChannelConfig {
         setRecvByteBufAllocator(allocator, channel.metadata());
         this.channel = channel;
     }
+
+    /**
+     * Set the {@link RecvByteBufAllocator} which is used for the channel to allocate receive buffers.
+     */
+    private void setRecvByteBufAllocator(RecvByteBufAllocator allocator, ChannelMetadata metadata) {
+        if (allocator instanceof MaxMessagesRecvByteBufAllocator) {
+            ((MaxMessagesRecvByteBufAllocator) allocator).maxMessagesPerRead(metadata.defaultMaxMessagesPerRead());
+        } else if (allocator == null) {
+            throw new NullPointerException("allocator");
+        }
+        setRecvByteBufAllocator(allocator);
+    }
+
+    @Override
+    public ChannelConfig setRecvByteBufAllocator(RecvByteBufAllocator allocator) {
+        rcvBufAllocator = checkNotNull(allocator, "allocator");
+        return this;
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public <T extends RecvByteBufAllocator> T getRecvByteBufAllocator() {
+        return (T) rcvBufAllocator;
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     @Override
     @SuppressWarnings("deprecation")
@@ -279,32 +332,10 @@ public class DefaultChannelConfig implements ChannelConfig {
         return this;
     }
 
-    @SuppressWarnings("unchecked")
-    @Override
-    public <T extends RecvByteBufAllocator> T getRecvByteBufAllocator() {
-        return (T) rcvBufAllocator;
-    }
 
-    @Override
-    public ChannelConfig setRecvByteBufAllocator(RecvByteBufAllocator allocator) {
-        rcvBufAllocator = checkNotNull(allocator, "allocator");
-        return this;
-    }
 
-    /**
-     * Set the {@link RecvByteBufAllocator} which is used for the channel to allocate receive buffers.
-     * @param allocator the allocator to set.
-     * @param metadata Used to set the {@link ChannelMetadata#defaultMaxMessagesPerRead()} if {@code allocator}
-     * is of type {@link MaxMessagesRecvByteBufAllocator}.
-     */
-    private void setRecvByteBufAllocator(RecvByteBufAllocator allocator, ChannelMetadata metadata) {
-        if (allocator instanceof MaxMessagesRecvByteBufAllocator) {
-            ((MaxMessagesRecvByteBufAllocator) allocator).maxMessagesPerRead(metadata.defaultMaxMessagesPerRead());
-        } else if (allocator == null) {
-            throw new NullPointerException("allocator");
-        }
-        setRecvByteBufAllocator(allocator);
-    }
+
+
 
     @Override
     public boolean isAutoRead() {

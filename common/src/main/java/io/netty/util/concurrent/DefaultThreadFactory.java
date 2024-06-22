@@ -65,6 +65,24 @@ public class DefaultThreadFactory implements ThreadFactory {
         this(toPoolName(poolType), daemon, priority);
     }
 
+    public DefaultThreadFactory(String poolName, boolean daemon, int priority) {
+        this(poolName, daemon, priority, System.getSecurityManager() == null ?
+                Thread.currentThread().getThreadGroup() : System.getSecurityManager().getThreadGroup());
+    }
+
+    public DefaultThreadFactory(String poolName, boolean daemon, int priority, ThreadGroup threadGroup) {
+        ObjectUtil.checkNotNull(poolName, "poolName");
+        if (priority < Thread.MIN_PRIORITY || priority > Thread.MAX_PRIORITY) {
+            throw new IllegalArgumentException(
+                    "priority: " + priority + " (expected: Thread.MIN_PRIORITY <= priority <= Thread.MAX_PRIORITY)");
+        }
+        // 线程名的前缀：例如nioEventLoopGroup-2-
+        prefix = poolName + '-' + poolId.incrementAndGet() + '-';
+        this.daemon = daemon;
+        this.priority = priority;
+        this.threadGroup = threadGroup;
+    }
+
     public static String toPoolName(Class<?> poolType) {
         ObjectUtil.checkNotNull(poolType, "poolType");
         String poolName = StringUtil.simpleClassName(poolType);
@@ -82,25 +100,9 @@ public class DefaultThreadFactory implements ThreadFactory {
         }
     }
 
-    public DefaultThreadFactory(String poolName, boolean daemon, int priority, ThreadGroup threadGroup) {
-        ObjectUtil.checkNotNull(poolName, "poolName");
-        if (priority < Thread.MIN_PRIORITY || priority > Thread.MAX_PRIORITY) {
-            throw new IllegalArgumentException(
-                    "priority: " + priority + " (expected: Thread.MIN_PRIORITY <= priority <= Thread.MAX_PRIORITY)");
-        }
-        prefix = poolName + '-' + poolId.incrementAndGet() + '-';
-        this.daemon = daemon;
-        this.priority = priority;
-        this.threadGroup = threadGroup;
-    }
-
-    public DefaultThreadFactory(String poolName, boolean daemon, int priority) {
-        this(poolName, daemon, priority, System.getSecurityManager() == null ?
-                Thread.currentThread().getThreadGroup() : System.getSecurityManager().getThreadGroup());
-    }
-
     @Override
     public Thread newThread(Runnable r) {
+        // 线程名：例如nioEventLoopGroup-2-1
         Thread t = newThread(FastThreadLocalRunnable.wrap(r), prefix + nextId.incrementAndGet());
         try {
             if (t.isDaemon() != daemon) {
@@ -116,6 +118,8 @@ public class DefaultThreadFactory implements ThreadFactory {
     }
 
     protected Thread newThread(Runnable r, String name) {
+        // 创建线程：与JDK原生Thread的区别是ThreadLocal的实现是自定义的，基于自定义的数组数据结构速度更快
         return new FastThreadLocalThread(threadGroup, r, name);
     }
+
 }

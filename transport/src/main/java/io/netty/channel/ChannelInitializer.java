@@ -26,32 +26,25 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * A special {@link ChannelInboundHandler} which offers an easy way to initialize a {@link Channel} once it was
- * registered to its {@link EventLoop}.
+ * ChannelInitializer：一种特殊的ChannelInboundHandler，
  */
 @Sharable
 public abstract class ChannelInitializer<C extends Channel> extends ChannelInboundHandlerAdapter {
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(ChannelInitializer.class);
 
-    /** ChannelInitializer实例是被所有的Channel共享的，用于初始化ChannelPipeline
-     * 通过Set集合保存已经初始化的ChannelPipeline，避免重复初始化同一ChannelPipeline
-     * */
-    private final Set<ChannelHandlerContext> initMap = Collections.newSetFromMap(
-            new ConcurrentHashMap<ChannelHandlerContext, Boolean>());
+    /**
+     * ChannelInitializer实例是被所有的Channel共享的，用于初始化ChannelPipeline
+     * initMap：通过Set集合保存已经初始化的ChannelPipeline，避免重复初始化同一ChannelPipeline
+     */
+    private final Set<ChannelHandlerContext> initMap = Collections.newSetFromMap(new ConcurrentHashMap<ChannelHandlerContext, Boolean>());
 
     @Override
-    @SuppressWarnings("unchecked")
-    public final void channelRegistered(ChannelHandlerContext ctx) throws Exception {
-        // 当channelRegister事件发生时，调用initChannel初始化pipeline
-        if (initChannel(ctx)) {
-            // we called initChannel(...) so we need to call now pipeline.fireChannelRegistered() to ensure we not
-            // miss an event.
-            ctx.pipeline().fireChannelRegistered();
-            // We are done with init the Channel, removing all the state for the Channel now.
-            removeState(ctx);
-        } else {
-            // Called initChannel(...) before which is the expected behavior, so just forward the event.
-            ctx.fireChannelRegistered();
+    public void handlerAdded(ChannelHandlerContext ctx) throws Exception {
+        if (ctx.channel().isRegistered()) {
+            // 初始化工作完成后，需要将自身从pipeline中移除
+            if (initChannel(ctx)) {
+                removeState(ctx);
+            }
         }
     }
 
@@ -62,13 +55,11 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
                 // 此时客户端NioSocketChannel已经创建并初始化好了
                 initChannel((C) ctx.channel());
             } catch (Throwable cause) {
-                // Explicitly call exceptionCaught(...) as we removed the handler before calling initChannel(...).
-                // We do so to prevent multiple calls to initChannel(...).
                 exceptionCaught(ctx, cause);
             } finally {
+                // 初始化完毕后，从pipeline中移除自身：当执行完initChannel 方法后，ChannelPipeline的初始化就结束了，此时就没必要再继续呆在pipeline中了
                 ChannelPipeline pipeline = ctx.pipeline();
                 if (pipeline.context(this) != null) {
-                    // 初始化完毕后，从pipeline中移除自身
                     pipeline.remove(this);
                 }
             }
@@ -78,32 +69,15 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
     }
 
     /**
-     * 回调函数：用户可以自定义ChannelHandler的添加行为（具体的初始化逻辑），匿名类实现
+     * 匿名类实现，这里指定具体的初始化逻辑
      */
     protected abstract void initChannel(C ch) throws Exception;
 
-    @Override
-    public void handlerAdded(ChannelHandlerContext ctx) throws Exception {
-        if (ctx.channel().isRegistered()) {
-            // This should always be true with our current DefaultChannelPipeline implementation.
-            // The good thing about calling initChannel(...) in handlerAdded(...) is that there will be no ordering
-            // surprises if a ChannelInitializer will add another ChannelInitializer. This is as all handlers
-            // will be added in the expected order.
-            if (initChannel(ctx)) {
-                // 初始化工作完成后，需要将自身从pipeline中移除
-                removeState(ctx);
-            }
-        }
-    }
-
     private void removeState(final ChannelHandlerContext ctx) {
-        // The removal may happen in an async fashion if the EventExecutor we use does something funky.
+        // 从initMap防重Set集合中删除ChannelInitializer
         if (ctx.isRemoved()) {
-            // 从initMap防重Set集合中删除ChannelInitializer
             initMap.remove(ctx);
         } else {
-            // The context is not removed yet which is most likely the case because a custom EventExecutor is used.
-            // Let's schedule it on the EventExecutor to give it some more time to be completed in case it is offloaded.
             ctx.executor().execute(new Runnable() {
                 @Override
                 public void run() {
@@ -112,6 +86,25 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
             });
         }
     }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public final void channelRegistered(ChannelHandlerContext ctx) throws Exception {
+        // 当channelRegister事件发生时，调用initChannel初始化pipeline
+        if (initChannel(ctx)) {
+            ctx.pipeline().fireChannelRegistered();
+            removeState(ctx);
+        } else {
+            // Called initChannel(...) before which is the expected behavior, so just forward the event.
+            ctx.fireChannelRegistered();
+        }
+    }
+
+
+
+
+
+
 
 
 
@@ -131,7 +124,5 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
     public void handlerRemoved(ChannelHandlerContext ctx) throws Exception {
         initMap.remove(ctx);
     }
-
-
 
 }

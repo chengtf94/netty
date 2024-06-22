@@ -21,14 +21,18 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * 工厂类：用于创建Channel到Reactor的绑定策略
+ * 默认Reactor选择器工厂：用于创建Reactor选择器，也就是Channel到Reactor的绑定策略
  */
 @UnstableApi
 public final class DefaultEventExecutorChooserFactory implements EventExecutorChooserFactory {
 
+    /**
+     * 单例
+     */
     public static final DefaultEventExecutorChooserFactory INSTANCE = new DefaultEventExecutorChooserFactory();
 
-    private DefaultEventExecutorChooserFactory() { }
+    private DefaultEventExecutorChooserFactory() {
+    }
 
     @Override
     public EventExecutorChooser newChooser(EventExecutor[] executors) {
@@ -40,10 +44,16 @@ public final class DefaultEventExecutorChooserFactory implements EventExecutorCh
         }
     }
 
+    /**
+     * 判断是否为2的幂
+     */
     private static boolean isPowerOfTwo(int val) {
         return (val & -val) == val;
     }
 
+    /**
+     * 2的幂Reactor选择器
+     */
     private static final class PowerOfTwoEventExecutorChooser implements EventExecutorChooser {
         private final AtomicInteger idx = new AtomicInteger();
         private final EventExecutor[] executors;
@@ -54,14 +64,15 @@ public final class DefaultEventExecutorChooserFactory implements EventExecutorCh
 
         @Override
         public EventExecutor next() {
+            // 求模取余：基于位运算
             return executors[idx.getAndIncrement() & executors.length - 1];
         }
     }
 
+    /**
+     * 通用Reactor选择器
+     */
     private static final class GenericEventExecutorChooser implements EventExecutorChooser {
-        // Use a 'long' counter to avoid non-round-robin behaviour at the 32-bit overflow boundary.
-        // The 64-bit long solves this by placing the overflow so far into the future, that no system
-        // will encounter this in practice.
         private final AtomicLong idx = new AtomicLong();
         private final EventExecutor[] executors;
 
@@ -71,7 +82,7 @@ public final class DefaultEventExecutorChooserFactory implements EventExecutorCh
 
         @Override
         public EventExecutor next() {
-            // 采用轮询round-robin的方式选择Reactor
+            // 求模取余：基于%运算
             return executors[(int) Math.abs(idx.getAndIncrement() % executors.length)];
         }
     }

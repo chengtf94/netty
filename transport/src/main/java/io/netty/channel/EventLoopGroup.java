@@ -3,7 +3,7 @@ package io.netty.channel;
 import io.netty.util.concurrent.EventExecutorGroup;
 
 /**
- * EventLoopGroup：EventLoopGroup正是Reactor组的接口定义，负责管理Reactor。
+ * EventLoopGroup：Reactor组的接口定义，负责管理Reactor，是基于事件驱动的线程模型外观类。
  * Netty中的Reactor是以Group的形式出现的，Netty中的Channel就是通过EventLoopGroup注册到具体的Reactor上的。
  */
 public interface EventLoopGroup extends EventExecutorGroup {

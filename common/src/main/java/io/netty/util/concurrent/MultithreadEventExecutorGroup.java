@@ -39,7 +39,7 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
      */
     private final EventExecutorChooserFactory.EventExecutorChooser chooser;
     /**
-     * 记录关闭的Reactor个数，当Reactor全部关闭后，才可以认为关闭成功
+     * 关闭的Reactor个数：当Reactor全部关闭后，才可以认为关闭成功
      */
     private final AtomicInteger terminatedChildren = new AtomicInteger();
     /**
@@ -54,6 +54,8 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
         this(nThreads, threadFactory == null ? null : new ThreadPerTaskExecutor(threadFactory), args);
     }
     protected MultithreadEventExecutorGroup(int nThreads, Executor executor, Object... args) {
+        // EventExecutorChooserFactory：绑定策略，当客户端连接完成三次握手后，Main Reactor会创建客户端连接NioSocketChannel，
+        // 并将其绑定到Sub Reactor Group中的一个固定Reactor，那么具体要绑定到哪个具体的Sub Reactor上由绑定策略指定（算法为求模取余）
         this(nThreads, executor, DefaultEventExecutorChooserFactory.INSTANCE, args);
     }
     protected MultithreadEventExecutorGroup(int nThreads, Executor executor,
@@ -62,13 +64,12 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
             throw new IllegalArgumentException(String.format("nThreads: %d (expected: > 0)", nThreads));
         }
 
-        // executor：用于创建Reactor线程
+        // #1 创建ThreadPerTaskExecutor：用于创建Reactor线程，来一个任务就创建一个线程执行，而创建的这个线程正是Netty的核心引擎Reactor线程
         if (executor == null) {
-            // 来一个任务就创建一个线程执行，而创建的这个线程正是Netty的核心引擎Reactor线程
             executor = new ThreadPerTaskExecutor(newDefaultThreadFactory());
         }
 
-        // 迭代创建Reactor Group中的Reactor
+        // #2 循环创建NioEventLoop：也就是Reactor Group中的Reactor
         children = new EventExecutor[nThreads];
         for (int i = 0; i < nThreads; i++) {
             boolean success = false;
@@ -99,21 +100,22 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
             }
         }
 
-        // 创建Channel到Reactor的绑定策略
+        // #3 创建Channel到Reactor的绑定策略：也就是线程选择器，确定每次如何从NioEventLoopGroup中选择一个NioEventLoop
         chooser = chooserFactory.newChooser(children);
 
-        // 创建Reactor关闭的回调函数terminationListener，在Reactor关闭时回调。
+        // #4 创建terminationListener：也就是Reactor关闭的回调函数，在Reactor关闭时回调
         final FutureListener<Object> terminationListener = new FutureListener<Object>() {
             @Override
             public void operationComplete(Future<Object> future) throws Exception {
+                // 当所有Reactor关闭后 才认为是关闭成功
                 if (terminatedChildren.incrementAndGet() == children.length) {
-                    // 当所有Reactor关闭后 才认为是关闭成功
                     terminationFuture.setSuccess(null);
                 }
             }
         };
+
+        // #5 为所有Reactor添加terminationListener
         for (EventExecutor e : children) {
-            // 为所有Reactor添加terminationListener
             e.terminationFuture().addListener(terminationListener);
         }
 
@@ -139,11 +141,17 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
         return chooser.next();
     }
 
-
-
-
-
-
+    /**
+     *  优雅关闭
+     * @param quietPeriod 优雅关闭静默期，默认为 2s 。这个参数主要来保证 Netty 整个关闭过程中的优雅。在关闭流程开始后，如果 Reactor 中还有遗留的异步任务需要执行，
+     *                    那么 Netty 就不能关闭，需要把所有异步任务执行完毕才可以。当所有异步任务执行完毕后，Netty 为了实现更加优雅的关闭操作，
+     *                    一定要保障业务无损，这时候就引入了静默期这个概念，如果在这个静默期内，用户没有新的任务向 Reactor 提交那么就开始关闭。
+     *                    如果在这个静默期内，还有用户继续提交异步任务，那么就不能关闭，需要把静默期内用户提交的异步任务执行完毕才可以放心关闭。
+     * @param timeout     优雅关闭超时时间，默认为 15s 。这个参数主要来保证 Netty 整个关闭过程的可控。一个生产级的优雅关闭方案既要保证优雅做到业务无损，
+     *                    更重要的是要保证关闭流程的可控，不能无限制的优雅下去。导致长时间无法完成关闭动作。
+     *                    于是 Netty 就引入了这个参数，如果优雅关闭超时，那么无论此时有无异步任务需要执行都要开始关闭了。
+     * @param unit        优雅关闭超时时间单位
+     */
     @Override
     public Future<?> shutdownGracefully(long quietPeriod, long timeout, TimeUnit unit) {
         for (EventExecutor l : children) {

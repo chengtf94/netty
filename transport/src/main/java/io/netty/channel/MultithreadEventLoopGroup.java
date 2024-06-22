@@ -17,7 +17,7 @@ import java.util.concurrent.ThreadFactory;
 public abstract class MultithreadEventLoopGroup extends MultithreadEventExecutorGroup implements EventLoopGroup {
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(MultithreadEventLoopGroup.class);
 
-    /** 默认Reactor/线程个数：默认为NettyRuntime.availableProcessors() * 2 */
+    /** 默认Reactor/线程个数：默认为NettyRuntime.availableProcessors() * 2，也就是CPU核数 * 2 */
     private static final int DEFAULT_EVENT_LOOP_THREADS;
     static {
         DEFAULT_EVENT_LOOP_THREADS = Math.max(1, SystemPropertyUtil.getInt(
@@ -47,6 +47,9 @@ public abstract class MultithreadEventLoopGroup extends MultithreadEventExecutor
     }
 
     @Override
+    protected abstract EventLoop newChild(Executor executor, Object... args) throws Exception;
+
+    @Override
     public ChannelFuture register(Channel channel) {
         return next().register(channel);
     }
@@ -55,14 +58,6 @@ public abstract class MultithreadEventLoopGroup extends MultithreadEventExecutor
     public EventLoop next() {
         return (EventLoop) super.next();
     }
-
-
-
-
-
-
-    @Override
-    protected abstract EventLoop newChild(Executor executor, Object... args) throws Exception;
 
     @Override
     public ChannelFuture register(ChannelPromise promise) {

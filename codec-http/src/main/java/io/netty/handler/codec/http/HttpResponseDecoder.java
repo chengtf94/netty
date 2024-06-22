@@ -15,71 +15,8 @@
  */
 package io.netty.handler.codec.http;
 
-import io.netty.buffer.ByteBuf;
-import io.netty.channel.ChannelPipeline;
-import io.netty.handler.codec.TooLongFrameException;
-
-
 /**
- * Decodes {@link ByteBuf}s into {@link HttpResponse}s and
- * {@link HttpContent}s.
- *
- * <h3>Parameters that prevents excessive memory consumption</h3>
- * <table border="1">
- * <tr>
- * <th>Name</th><th>Meaning</th>
- * </tr>
- * <tr>
- * <td>{@code maxInitialLineLength}</td>
- * <td>The maximum length of the initial line (e.g. {@code "HTTP/1.0 200 OK"})
- *     If the length of the initial line exceeds this value, a
- *     {@link TooLongFrameException} will be raised.</td>
- * </tr>
- * <tr>
- * <td>{@code maxHeaderSize}</td>
- * <td>The maximum length of all headers.  If the sum of the length of each
- *     header exceeds this value, a {@link TooLongFrameException} will be raised.</td>
- * </tr>
- * <tr>
- * <td>{@code maxChunkSize}</td>
- * <td>The maximum length of the content or each chunk.  If the content length
- *     exceeds this value, the transfer encoding of the decoded response will be
- *     converted to 'chunked' and the content will be split into multiple
- *     {@link HttpContent}s.  If the transfer encoding of the HTTP response is
- *     'chunked' already, each chunk will be split into smaller chunks if the
- *     length of the chunk exceeds this value.  If you prefer not to handle
- *     {@link HttpContent}s in your handler, insert {@link HttpObjectAggregator}
- *     after this decoder in the {@link ChannelPipeline}.</td>
- * </tr>
- * </table>
- *
- * <h3>Decoding a response for a <tt>HEAD</tt> request</h3>
- * <p>
- * Unlike other HTTP requests, the successful response of a <tt>HEAD</tt>
- * request does not have any content even if there is <tt>Content-Length</tt>
- * header.  Because {@link HttpResponseDecoder} is not able to determine if the
- * response currently being decoded is associated with a <tt>HEAD</tt> request,
- * you must override {@link #isContentAlwaysEmpty(HttpMessage)} to return
- * <tt>true</tt> for the response of the <tt>HEAD</tt> request.
- * </p><p>
- * If you are writing an HTTP client that issues a <tt>HEAD</tt> request,
- * please use {@link HttpClientCodec} instead of this decoder.  It will perform
- * additional state management to handle the responses for <tt>HEAD</tt>
- * requests correctly.
- * </p>
- *
- * <h3>Decoding a response for a <tt>CONNECT</tt> request</h3>
- * <p>
- * You also need to do additional state management to handle the response of a
- * <tt>CONNECT</tt> request properly, like you did for <tt>HEAD</tt>.  One
- * difference is that the decoder should stop decoding completely after decoding
- * the successful 200 response since the connection is not an HTTP connection
- * anymore.
- * </p><p>
- * {@link HttpClientCodec} also handles this edge case correctly, so you have to
- * use {@link HttpClientCodec} if you are writing an HTTP client that issues a
- * <tt>CONNECT</tt> request.
- * </p>
+ * HTTP详情解码器
  */
 public class HttpResponseDecoder extends HttpObjectDecoder {
 

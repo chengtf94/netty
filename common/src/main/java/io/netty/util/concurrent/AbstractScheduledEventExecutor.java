@@ -44,12 +44,15 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
     };
 
     /**
-     * 定时任务队列
+     * 定时任务队列：基于PriorityQueue优先级队列
      */
     PriorityQueue<ScheduledFutureTask<?>> scheduledTaskQueue;
 
     long nextTaskId;
 
+    /**
+     * 构造方法
+     */
     protected AbstractScheduledEventExecutor() {
     }
 
@@ -57,19 +60,58 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
         super(parent);
     }
 
-    protected static long nanoTime() {
-        return ScheduledFutureTask.nanoTime();
+
+    /**
+     * 从定时任务队列中取出即将快要执行的定时任务deadline时间点：-1表示当前定时任务队列中没有定时任务
+     */
+    protected final long nextScheduledTaskDeadlineNanos() {
+        ScheduledFutureTask<?> scheduledTask = peekScheduledTask();
+        return scheduledTask != null ? scheduledTask.deadlineNanos() : -1;
+    }
+
+    final ScheduledFutureTask<?> peekScheduledTask() {
+        Queue<ScheduledFutureTask<?>> scheduledTaskQueue = this.scheduledTaskQueue;
+        return scheduledTaskQueue != null ? scheduledTaskQueue.peek() : null;
     }
 
     /**
      * Given an arbitrary deadline {@code deadlineNanos}, calculate the number of nano seconds from now
-     * {@code deadlineNanos} would expire.
-     * @param deadlineNanos An arbitrary deadline in nano seconds.
-     * @return the number of nano seconds from now {@code deadlineNanos} would expire.
      */
     protected static long deadlineToDelayNanos(long deadlineNanos) {
         return ScheduledFutureTask.deadlineToDelayNanos(deadlineNanos);
     }
+
+    /**
+     * Return the {@link Runnable} which is ready to be executed with the given {@code nanoTime}.
+     * You should use {@link #nanoTime()} to retrieve the correct {@code nanoTime}.
+     */
+    protected final Runnable pollScheduledTask(long nanoTime) {
+        assert inEventLoop();
+        ScheduledFutureTask<?> scheduledTask = peekScheduledTask();
+        if (scheduledTask == null || scheduledTask.deadlineNanos() - nanoTime > 0) {
+            return null;
+        }
+        scheduledTaskQueue.remove();
+        scheduledTask.setConsumed();
+        return scheduledTask;
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+    protected static long nanoTime() {
+        return ScheduledFutureTask.nanoTime();
+    }
+
+
 
     /**
      * The initial value used for delay and computations based upon a monatomic time source.
@@ -122,21 +164,7 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
         return pollScheduledTask(nanoTime());
     }
 
-    /**
-     * Return the {@link Runnable} which is ready to be executed with the given {@code nanoTime}.
-     * You should use {@link #nanoTime()} to retrieve the correct {@code nanoTime}.
-     */
-    protected final Runnable pollScheduledTask(long nanoTime) {
-        assert inEventLoop();
 
-        ScheduledFutureTask<?> scheduledTask = peekScheduledTask();
-        if (scheduledTask == null || scheduledTask.deadlineNanos() - nanoTime > 0) {
-            return null;
-        }
-        scheduledTaskQueue.remove();
-        scheduledTask.setConsumed();
-        return scheduledTask;
-    }
 
     /**
      * Return the nanoseconds until the next scheduled task is ready to be run or {@code -1} if no task is scheduled.
@@ -146,19 +174,8 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
         return scheduledTask != null ? scheduledTask.delayNanos() : -1;
     }
 
-    /**
-     * Return the deadline (in nanoseconds) when the next scheduled task is ready to be run or {@code -1}
-     * if no task is scheduled.
-     */
-    protected final long nextScheduledTaskDeadlineNanos() {
-        ScheduledFutureTask<?> scheduledTask = peekScheduledTask();
-        return scheduledTask != null ? scheduledTask.deadlineNanos() : -1;
-    }
 
-    final ScheduledFutureTask<?> peekScheduledTask() {
-        Queue<ScheduledFutureTask<?>> scheduledTaskQueue = this.scheduledTaskQueue;
-        return scheduledTaskQueue != null ? scheduledTaskQueue.peek() : null;
-    }
+
 
     /**
      * Returns {@code true} if a scheduled task is ready for processing.
@@ -288,14 +305,6 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
      * Called from arbitrary non-{@link EventExecutor} threads prior to scheduled task submission.
      * Returns {@code true} if the {@link EventExecutor} thread should be woken immediately to
      * process the scheduled task (if not already awake).
-     * <p>
-     * If {@code false} is returned, {@link #afterScheduledTaskSubmitted(long)} will be called with
-     * the same value <i>after</i> the scheduled task is enqueued, providing another opportunity
-     * to wake the {@link EventExecutor} thread if required.
-     *
-     * @param deadlineNanos deadline of the to-be-scheduled task
-     *     relative to {@link AbstractScheduledEventExecutor#nanoTime()}
-     * @return {@code true} if the {@link EventExecutor} thread should be woken, {@code false} otherwise
      */
     protected boolean beforeScheduledTaskSubmitted(long deadlineNanos) {
         return true;
@@ -303,9 +312,6 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
 
     /**
      * See {@link #beforeScheduledTaskSubmitted(long)}. Called only after that method returns false.
-     *
-     * @param deadlineNanos relative to {@link AbstractScheduledEventExecutor#nanoTime()}
-     * @return  {@code true} if the {@link EventExecutor} thread should be woken, {@code false} otherwise
      */
     protected boolean afterScheduledTaskSubmitted(long deadlineNanos) {
         return true;

@@ -18,35 +18,26 @@ package io.netty.channel;
 import io.netty.util.IntSupplier;
 
 /**
- * Select strategy interface.
- *
- * Provides the ability to control the behavior of the select loop. For example a blocking select
- * operation can be delayed or skipped entirely if there are events to process immediately.
+ * Select轮询策略接口
  */
 public interface SelectStrategy {
 
     /**
-     * Indicates a blocking select should follow.
+     * 没有任何异步任务需要执行，Reactor线程可以安心的阻塞在Selector上等待IO就绪事件的来临
      */
     int SELECT = -1;
     /**
-     * Indicates the IO loop should be retried, no blocking select to follow directly.
+     * 重新开启一轮IO轮询
      */
     int CONTINUE = -2;
     /**
-     * Indicates the IO loop to poll for new events without blocking.
+     * Reactor线程进行自旋轮询，由于NIO 不支持自旋操作，所以这里直接跳到SelectStrategy.SELECT策略
      */
     int BUSY_WAIT = -3;
 
     /**
-     * The {@link SelectStrategy} can be used to steer the outcome of a potential select
-     * call.
-     *
-     * @param selectSupplier The supplier with the result of a select result.
-     * @param hasTasks true if tasks are waiting to be processed.
-     * @return {@link #SELECT} if the next step should be blocking select {@link #CONTINUE} if
-     *         the next step should be to not select but rather jump back to the IO loop and try
-     *         again. Any value >= 0 is treated as an indicator that work needs to be done.
+     * 计算Select轮询策略
      */
     int calculateStrategy(IntSupplier selectSupplier, boolean hasTasks) throws Exception;
+
 }

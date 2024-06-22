@@ -18,42 +18,33 @@ package io.netty.channel;
 import static io.netty.util.internal.ObjectUtil.checkPositiveOrZero;
 
 /**
+ * WriteBufferWaterMark：ChannelOutboundBuffer中的高低水位线
  * WriteBufferWaterMark is used to set low water mark and high water mark for the write buffer.
- * <p>
- * If the number of bytes queued in the write buffer exceeds the
- * {@linkplain #high high water mark}, {@link Channel#isWritable()}
- * will start to return {@code false}.
- * <p>
- * If the number of bytes queued in the write buffer exceeds the
- * {@linkplain #high high water mark} and then
- * dropped down below the {@linkplain #low low water mark},
- * {@link Channel#isWritable()} will start to return
- * {@code true} again.
  */
 public final class WriteBufferWaterMark {
 
+    /**
+     * 高水位线设置的大小为 64 KB，低水位线设置的是 32 KB
+     * 当每个 Channel 中的待发送数据如果超过 64 KB 时，则Channel 的状态就会变为不可写状态。
+     * 当内存占用量低于 32 KB时，Channel 的状态会再次变为可写状态
+     */
     private static final int DEFAULT_LOW_WATER_MARK = 32 * 1024;
     private static final int DEFAULT_HIGH_WATER_MARK = 64 * 1024;
-
     public static final WriteBufferWaterMark DEFAULT =
             new WriteBufferWaterMark(DEFAULT_LOW_WATER_MARK, DEFAULT_HIGH_WATER_MARK, false);
-
+    /**
+     * 高低水位
+     */
     private final int low;
     private final int high;
 
     /**
-     * Create a new instance.
-     *
-     * @param low low water mark for write buffer.
-     * @param high high water mark for write buffer
+     * 构造方法
      */
     public WriteBufferWaterMark(int low, int high) {
         this(low, high, true);
     }
 
-    /**
-     * This constructor is needed to keep backward-compatibility.
-     */
     WriteBufferWaterMark(int low, int high, boolean validate) {
         if (validate) {
             checkPositiveOrZero(low, "low");
@@ -68,16 +59,10 @@ public final class WriteBufferWaterMark {
         this.high = high;
     }
 
-    /**
-     * Returns the low water mark for the write buffer.
-     */
     public int low() {
         return low;
     }
 
-    /**
-     * Returns the high water mark for the write buffer.
-     */
     public int high() {
         return high;
     }
@@ -85,11 +70,11 @@ public final class WriteBufferWaterMark {
     @Override
     public String toString() {
         StringBuilder builder = new StringBuilder(55)
-            .append("WriteBufferWaterMark(low: ")
-            .append(low)
-            .append(", high: ")
-            .append(high)
-            .append(")");
+                .append("WriteBufferWaterMark(low: ")
+                .append(low)
+                .append(", high: ")
+                .append(high)
+                .append(")");
         return builder.toString();
     }
 

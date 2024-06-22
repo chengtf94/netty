@@ -734,8 +734,8 @@
       <dependency>
         <groupId>com.google.code.gson</groupId>
         <artifactId>gson</artifactId>
-        <version>2.7</version>
-        <scope>test</scope>
+        <version>2.8.5</version>
+<!--        <scope>test</scope>-->
       </dependency>
 
       <!-- Test suite dependency for generating a compressed heap dump file -->

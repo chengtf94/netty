@@ -16,8 +16,7 @@
 package io.netty.channel;
 
 /**
- * {@link ChannelHandler} which adds callbacks for state changes. This allows the user
- * to hook in to state changes easily.
+ * ChannelInboundHandler：负责响应处理 inbound 类事件回调和 exceptionCaught 事件回调
  */
 public interface ChannelInboundHandler extends ChannelHandler {
 
@@ -72,4 +71,5 @@ public interface ChannelInboundHandler extends ChannelHandler {
     @Override
     @SuppressWarnings("deprecation")
     void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception;
+
 }

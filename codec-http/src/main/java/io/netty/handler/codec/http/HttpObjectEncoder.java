@@ -34,17 +34,7 @@ import static io.netty.handler.codec.http.HttpConstants.CR;
 import static io.netty.handler.codec.http.HttpConstants.LF;
 
 /**
- * Encodes an {@link HttpMessage} or an {@link HttpContent} into
- * a {@link ByteBuf}.
- *
- * <h3>Extensibility</h3>
- *
- * Please note that this encoder is designed to be extended to implement
- * a protocol derived from HTTP, such as
- * <a href="https://en.wikipedia.org/wiki/Real_Time_Streaming_Protocol">RTSP</a> and
- * <a href="https://en.wikipedia.org/wiki/Internet_Content_Adaptation_Protocol">ICAP</a>.
- * To implement the encoder of such a derived protocol, extend this class and
- * implement all abstract methods properly.
+ * 通用HTTP编码器
  */
 public abstract class HttpObjectEncoder<H extends HttpMessage> extends MessageToMessageEncoder<Object> {
     static final int CRLF_SHORT = (CR << 8) | LF;

@@ -27,8 +27,13 @@ import static io.netty.util.internal.ObjectUtil.checkNotNull;
  * DefaultChannelPromise
  */
 public class DefaultChannelPromise extends DefaultPromise<Void> implements ChannelPromise, FlushCheckpoint {
-
+    /**
+     * Channel
+     */
     private final Channel channel;
+    /**
+     * 检查点
+     */
     private long checkpoint;
 
     /**
@@ -44,6 +49,11 @@ public class DefaultChannelPromise extends DefaultPromise<Void> implements Chann
     }
 
     @Override
+    public boolean trySuccess() {
+        return trySuccess(null);
+    }
+
+    @Override
     protected EventExecutor executor() {
         EventExecutor e = super.executor();
         if (e == null) {
@@ -52,6 +62,16 @@ public class DefaultChannelPromise extends DefaultPromise<Void> implements Chann
             return e;
         }
     }
+
+    @Override
+    public ChannelPromise sync() throws InterruptedException {
+        super.sync();
+        return this;
+    }
+
+
+
+
 
     @Override
     public Channel channel() {
@@ -67,11 +87,6 @@ public class DefaultChannelPromise extends DefaultPromise<Void> implements Chann
     public ChannelPromise setSuccess(Void result) {
         super.setSuccess(result);
         return this;
-    }
-
-    @Override
-    public boolean trySuccess() {
-        return trySuccess(null);
     }
 
     @Override
@@ -104,11 +119,7 @@ public class DefaultChannelPromise extends DefaultPromise<Void> implements Chann
         return this;
     }
 
-    @Override
-    public ChannelPromise sync() throws InterruptedException {
-        super.sync();
-        return this;
-    }
+
 
     @Override
     public ChannelPromise syncUninterruptibly() {

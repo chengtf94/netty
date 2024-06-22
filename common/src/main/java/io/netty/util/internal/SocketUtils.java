@@ -112,6 +112,8 @@ public final class SocketUtils {
     }
 
     public static SocketChannel accept(final ServerSocketChannel serverSocketChannel) throws IOException {
+        // 内核会基于监听Socket创建出来一个新的Socket专门用于与客户端之间的网络通信，我们称之为客户端连接Socket。
+        // ServerSocketChannel就类似于监听Socket，SocketChannel就类似于客户端连接Socket。
         try {
             return AccessController.doPrivileged(new PrivilegedExceptionAction<SocketChannel>() {
                 @Override

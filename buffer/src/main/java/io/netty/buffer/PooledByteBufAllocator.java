@@ -35,12 +35,21 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * PooledByteBufAllocator：使用堆外内存为ByteBuffer分配内存
+ * 为了避免不必要的数据拷贝以及JVM垃圾回收对性能的影响，Netty选择使用堆外内存存储网络通信数据。
+ * 在 Netty 申请堆外内存之前，首先会在 JVM 堆中创建一个用于引用 native memory 的引用对象 DirectByteBuffer ，随后会使用 native 方法 unsafe.allocateMemory 通过底层 malloc 系统调用申请一块堆外内存。
+ * 这里就涉及到到两个重要开销：
+ *  ● 在 JVM 堆中创建对象 DirectByteBuffer ，并为该对象申请分配 JVM 堆内存。
+ *  ● 通过 malloc 系统调用向操作系统申请堆外内存，然后被 DirectByteBuffer 引用。但是堆外内存的申请和释放远比堆内内存申请和释放的开销要大很多。
+ *  在 Netty 面对的高并发网络通信场景下，申请堆外内存是一个非常频繁的操作，基于以上提到的两个重要性能开销，这种大量频繁的内存申请释放操作对程序的性能影响是巨大的，
+ *  所以 Netty 就引入了内存池对内存相关的操作进行统一的管理。
+ */
 public class PooledByteBufAllocator extends AbstractByteBufAllocator implements ByteBufAllocatorMetricProvider {
-
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(PooledByteBufAllocator.class);
+
     private static final int DEFAULT_NUM_HEAP_ARENA;
     private static final int DEFAULT_NUM_DIRECT_ARENA;
-
     private static final int DEFAULT_PAGE_SIZE;
     private static final int DEFAULT_MAX_ORDER; // 8192 << 11 = 16 MiB per chunk
     private static final int DEFAULT_SMALL_CACHE_SIZE;

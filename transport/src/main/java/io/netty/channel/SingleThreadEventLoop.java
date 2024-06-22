@@ -12,12 +12,12 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadFactory;
 
 /**
- * Abstract base class for {@link EventLoop}s that execute all its submitted tasks in a single thread.
+ * SingleThreadEventLoop：负责对尾部任务队列tailTasks进行管理。并且提供Channel向Reactor注册的行为。
  */
 public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor implements EventLoop {
 
     /**
-     * 任务队列大小，默认是无界队列
+     * 任务队列容量上限：默认是无界队列
      */
     protected static final int DEFAULT_MAX_PENDING_TASKS = Math.max(16,
             SystemPropertyUtil.getInt("io.netty.eventLoop.maxPendingTasks", Integer.MAX_VALUE));
@@ -57,7 +57,6 @@ public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor im
                                     boolean addTaskWakesUp, Queue<Runnable> taskQueue, Queue<Runnable> tailTaskQueue,
                                     RejectedExecutionHandler rejectedExecutionHandler) {
         super(parent, executor, addTaskWakesUp, taskQueue, rejectedExecutionHandler);
-        // 尾部队列：执行一些统计任务 不常用
         tailTasks = ObjectUtil.checkNotNull(tailTaskQueue, "tailTaskQueue");
     }
 
@@ -108,6 +107,32 @@ public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor im
 
 
     /**
+     * 检查普通队列、尾部队列中是否有异步任务等待执行
+     */
+    @Override
+    protected boolean hasTasks() {
+        return super.hasTasks() || !tailTasks.isEmpty();
+    }
+
+    @Override
+    protected void afterRunningAllTasks() {
+        runAllTasksFrom(tailTasks);
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    /**
      * Adds a task to be run once at the end of next (or current) {@code eventloop} iteration.
      *
      * @param task to be added.
@@ -140,15 +165,8 @@ public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor im
         return tailTasks.remove(ObjectUtil.checkNotNull(task, "task"));
     }
 
-    @Override
-    protected void afterRunningAllTasks() {
-        runAllTasksFrom(tailTasks);
-    }
 
-    @Override
-    protected boolean hasTasks() {
-        return super.hasTasks() || !tailTasks.isEmpty();
-    }
+
 
     @Override
     public int pendingTasks() {

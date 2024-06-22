@@ -25,17 +25,38 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 基于NIO模型的ServerSocketChannel
+ * 基于NIO模型的ServerSocketChannel：对应监听Socket，负责绑定监听端口地址，接收客户端连接并创建用于与客户端通信的SocketChannel。
  */
-public class NioServerSocketChannel extends AbstractNioMessageChannel
-                             implements io.netty.channel.socket.ServerSocketChannel {
+public class NioServerSocketChannel extends AbstractNioMessageChannel implements io.netty.channel.socket.ServerSocketChannel {
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(NioServerSocketChannel.class);
 
     /**
-     * 用于创建Selector和Selectable Channels
+     * 默认SelectorProvider：用于创建Selector和Selectable Channels
      */
     private static final SelectorProvider DEFAULT_SELECTOR_PROVIDER = SelectorProvider.provider();
     private static final ChannelMetadata METADATA = new ChannelMetadata(false, 16);
+    /**
+     * ServerSocketChannel相关的配置
+     */
+    private final ServerSocketChannelConfig config;
+
+    /**
+     * 构造方法
+     */
+    public NioServerSocketChannel() {
+        this(newSocket(DEFAULT_SELECTOR_PROVIDER));
+    }
+
+    public NioServerSocketChannel(SelectorProvider provider) {
+        this(newSocket(provider));
+    }
+
+    public NioServerSocketChannel(ServerSocketChannel channel) {
+        // 父类AbstractNioChannel中保存JDK NIO原生ServerSocketChannel以及要监听的事件OP_ACCEPT
+        super(null, channel, SelectionKey.OP_ACCEPT);
+        // 创建ServerSocketChannel配置类
+        config = new NioServerSocketChannelConfig(this, javaChannel().socket());
+    }
 
     /**
      * 创建JDK NIO ServerSocketChannel
@@ -49,31 +70,54 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
         }
     }
 
-    /**
-     * ServerSocketChannel相关的配置
-     */
-    private final ServerSocketChannelConfig config;
-
-    /**
-     * 构造方法
-     */
-    public NioServerSocketChannel() {
-        this(newSocket(DEFAULT_SELECTOR_PROVIDER));
-    }
-    public NioServerSocketChannel(SelectorProvider provider) {
-        this(newSocket(provider));
-    }
-    public NioServerSocketChannel(ServerSocketChannel channel) {
-        // 父类AbstractNioChannel中保存JDK NIO原生ServerSocketChannel以及要监听的事件OP_ACCEPT
-        super(null, channel, SelectionKey.OP_ACCEPT);
-        // 创建ServerSocketChannel配置类
-        // DefaultChannelConfig中设置用于Channel接收数据用的Buffer->AdaptiveRecvByteBufAllocator
-        config = new NioServerSocketChannelConfig(this, javaChannel().socket());
-    }
     @Override
     protected ServerSocketChannel javaChannel() {
         return (ServerSocketChannel) super.javaChannel();
     }
+
+    @SuppressJava6Requirement(reason = "Usage guarded by java version check")
+    @Override
+    protected void doBind(SocketAddress localAddress) throws Exception {
+        // 调用JDK NIO 底层SelectableChannel 执行绑定操作
+        if (PlatformDependent.javaVersion() >= 7) {
+            javaChannel().bind(localAddress, config.getBacklog());
+        } else {
+            javaChannel().socket().bind(localAddress, config.getBacklog());
+        }
+    }
+
+    @Override
+    public ServerSocketChannelConfig config() {
+        return config;
+    }
+
+    @Override
+    protected int doReadMessages(List<Object> buf) throws Exception {
+        // 先根据ServerSocketChannel的accept方法获取到JDK NIO 原生的SocketChannel（用于底层真正与客户端通信的Channel）
+        SocketChannel ch = SocketUtils.accept(javaChannel());
+        try {
+            // 再创建Netty中的NioSocketChannel
+            if (ch != null) {
+                buf.add(new NioSocketChannel(this, ch));
+                return 1;
+            }
+        } catch (Throwable t) {
+            logger.warn("Failed to create a new channel from an accepted socket.", t);
+            try {
+                ch.close();
+            } catch (Throwable t2) {
+                logger.warn("Failed to close a socket.", t2);
+            }
+        }
+        return 0;
+    }
+
+
+
+
+
+
+
 
 
 
@@ -92,14 +136,7 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
     }
 
     @Override
-    public ServerSocketChannelConfig config() {
-        return config;
-    }
-
-    @Override
     public boolean isActive() {
-        // As java.nio.ServerSocketChannel.isBound() will continue to return true even after the channel was closed
-        // we will also need to check if it is open.
         return isOpen() && javaChannel().socket().isBound();
     }
 
@@ -109,48 +146,19 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
     }
 
 
-
     @Override
     protected SocketAddress localAddress0() {
         return SocketUtils.localSocketAddress(javaChannel().socket());
     }
 
-    @SuppressJava6Requirement(reason = "Usage guarded by java version check")
-    @Override
-    protected void doBind(SocketAddress localAddress) throws Exception {
-        if (PlatformDependent.javaVersion() >= 7) {
-            javaChannel().bind(localAddress, config.getBacklog());
-        } else {
-            javaChannel().socket().bind(localAddress, config.getBacklog());
-        }
-    }
+
 
     @Override
     protected void doClose() throws Exception {
         javaChannel().close();
     }
 
-    @Override
-    protected int doReadMessages(List<Object> buf) throws Exception {
-        SocketChannel ch = SocketUtils.accept(javaChannel());
 
-        try {
-            if (ch != null) {
-                buf.add(new NioSocketChannel(this, ch));
-                return 1;
-            }
-        } catch (Throwable t) {
-            logger.warn("Failed to create a new channel from an accepted socket.", t);
-
-            try {
-                ch.close();
-            } catch (Throwable t2) {
-                logger.warn("Failed to close a socket.", t2);
-            }
-        }
-
-        return 0;
-    }
 
     // Unnecessary stuff
     @Override
@@ -185,7 +193,8 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
     }
 
     /**
-     * ServerSocketChannel配置类
+     * ServerSocketChannel配置类：在配置类中封装了对Channel底层的一些配置行为，以及JDK中的ServerSocket、
+     * 以及创建NioServerSocketChannel接收数据用的Buffer分配器AdaptiveRecvByteBufAllocator
      */
     private final class NioServerSocketChannelConfig extends DefaultServerSocketChannelConfig {
         private NioServerSocketChannelConfig(NioServerSocketChannel channel, ServerSocket javaSocket) {

@@ -33,93 +33,7 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 /**
- * Decodes {@link ByteBuf}s into {@link HttpMessage}s and
- * {@link HttpContent}s.
- *
- * <h3>Parameters that prevents excessive memory consumption</h3>
- * <table border="1">
- * <tr>
- * <th>Name</th><th>Default value</th><th>Meaning</th>
- * </tr>
- * <tr>
- * <td>{@code maxInitialLineLength}</td>
- * <td>{@value #DEFAULT_MAX_INITIAL_LINE_LENGTH}</td>
- * <td>The maximum length of the initial line
- *     (e.g. {@code "GET / HTTP/1.0"} or {@code "HTTP/1.0 200 OK"})
- *     If the length of the initial line exceeds this value, a
- *     {@link TooLongFrameException} will be raised.</td>
- * </tr>
- * <tr>
- * <td>{@code maxHeaderSize}</td>
- * <td>{@value #DEFAULT_MAX_HEADER_SIZE}</td>
- * <td>The maximum length of all headers.  If the sum of the length of each
- *     header exceeds this value, a {@link TooLongFrameException} will be raised.</td>
- * </tr>
- * <tr>
- * <td>{@code maxChunkSize}</td>
- * <td>{@value #DEFAULT_MAX_CHUNK_SIZE}</td>
- * <td>The maximum length of the content or each chunk.  If the content length
- *     (or the length of each chunk) exceeds this value, the content or chunk
- *     will be split into multiple {@link HttpContent}s whose length is
- *     {@code maxChunkSize} at maximum.</td>
- * </tr>
- * </table>
- *
- * <h3>Parameters that control parsing behavior</h3>
- * <table border="1">
- * <tr>
- * <th>Name</th><th>Default value</th><th>Meaning</th>
- * </tr>
- * <tr>
- * <td>{@code allowDuplicateContentLengths}</td>
- * <td>{@value #DEFAULT_ALLOW_DUPLICATE_CONTENT_LENGTHS}</td>
- * <td>When set to {@code false}, will reject any messages that contain multiple Content-Length header fields.
- *     When set to {@code true}, will allow multiple Content-Length headers only if they are all the same decimal value.
- *     The duplicated field-values will be replaced with a single valid Content-Length field.
- *     See <a href="https://tools.ietf.org/html/rfc7230#section-3.3.2">RFC 7230, Section 3.3.2</a>.</td>
- * </tr>
- * </table>
- *
- * <h3>Chunked Content</h3>
- *
- * If the content of an HTTP message is greater than {@code maxChunkSize} or
- * the transfer encoding of the HTTP message is 'chunked', this decoder
- * generates one {@link HttpMessage} instance and its following
- * {@link HttpContent}s per single HTTP message to avoid excessive memory
- * consumption. For example, the following HTTP message:
- * <pre>
- * GET / HTTP/1.1
- * Transfer-Encoding: chunked
- *
- * 1a
- * abcdefghijklmnopqrstuvwxyz
- * 10
- * 1234567890abcdef
- * 0
- * Content-MD5: ...
- * <i>[blank line]</i>
- * </pre>
- * triggers {@link HttpRequestDecoder} to generate 3 objects:
- * <ol>
- * <li>An {@link HttpRequest},</li>
- * <li>The first {@link HttpContent} whose content is {@code 'abcdefghijklmnopqrstuvwxyz'},</li>
- * <li>The second {@link LastHttpContent} whose content is {@code '1234567890abcdef'}, which marks
- * the end of the content.</li>
- * </ol>
- *
- * If you prefer not to handle {@link HttpContent}s by yourself for your
- * convenience, insert {@link HttpObjectAggregator} after this decoder in the
- * {@link ChannelPipeline}.  However, please note that your server might not
- * be as memory efficient as without the aggregator.
- *
- * <h3>Extensibility</h3>
- *
- * Please note that this decoder is designed to be extended to implement
- * a protocol derived from HTTP, such as
- * <a href="https://en.wikipedia.org/wiki/Real_Time_Streaming_Protocol">RTSP</a> and
- * <a href="https://en.wikipedia.org/wiki/Internet_Content_Adaptation_Protocol">ICAP</a>.
- * To implement the decoder of such a derived protocol, extend this class and
- * implement all abstract methods properly.
+ * 通用HTTP解码器
  */
 public abstract class HttpObjectDecoder extends ByteToMessageDecoder {
     public static final int DEFAULT_MAX_INITIAL_LINE_LENGTH = 4096;
@@ -172,36 +86,24 @@ public abstract class HttpObjectDecoder extends ByteToMessageDecoder {
     private State currentState = State.SKIP_CONTROL_CHARS;
 
     /**
-     * Creates a new instance with the default
-     * {@code maxInitialLineLength (4096}}, {@code maxHeaderSize (8192)}, and
-     * {@code maxChunkSize (8192)}.
+     * 构造方法
      */
     protected HttpObjectDecoder() {
         this(DEFAULT_MAX_INITIAL_LINE_LENGTH, DEFAULT_MAX_HEADER_SIZE, DEFAULT_MAX_CHUNK_SIZE,
              DEFAULT_CHUNKED_SUPPORTED);
     }
 
-    /**
-     * Creates a new instance with the specified parameters.
-     */
     protected HttpObjectDecoder(
             int maxInitialLineLength, int maxHeaderSize, int maxChunkSize, boolean chunkedSupported) {
         this(maxInitialLineLength, maxHeaderSize, maxChunkSize, chunkedSupported, DEFAULT_VALIDATE_HEADERS);
     }
 
-    /**
-     * Creates a new instance with the specified parameters.
-     */
     protected HttpObjectDecoder(
             int maxInitialLineLength, int maxHeaderSize, int maxChunkSize,
             boolean chunkedSupported, boolean validateHeaders) {
         this(maxInitialLineLength, maxHeaderSize, maxChunkSize, chunkedSupported, validateHeaders,
              DEFAULT_INITIAL_BUFFER_SIZE);
     }
-
-    /**
-     * Creates a new instance with the specified parameters.
-     */
     protected HttpObjectDecoder(
             int maxInitialLineLength, int maxHeaderSize, int maxChunkSize,
             boolean chunkedSupported, boolean validateHeaders, int initialBufferSize) {
@@ -226,6 +128,9 @@ public abstract class HttpObjectDecoder extends ByteToMessageDecoder {
         this.allowDuplicateContentLengths = allowDuplicateContentLengths;
     }
 
+    /**
+     * 解码
+     */
     @Override
     protected void decode(ChannelHandlerContext ctx, ByteBuf buffer, List<Object> out) throws Exception {
         if (resetRequested) {

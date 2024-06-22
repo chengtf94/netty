@@ -30,49 +30,6 @@ import java.net.SocketAddress;
 /**
  * A nexus to a network socket or a component which is capable of I/O
  * operations such as read, write, connect, and bind.
- * <p>
- * A channel provides a user:
- * <ul>
- * <li>the current state of the channel (e.g. is it open? is it connected?),</li>
- * <li>the {@linkplain ChannelConfig configuration parameters} of the channel (e.g. receive buffer size),</li>
- * <li>the I/O operations that the channel supports (e.g. read, write, connect, and bind), and</li>
- * <li>the {@link ChannelPipeline} which handles all I/O events and requests
- *     associated with the channel.</li>
- * </ul>
- *
- * <h3>All I/O operations are asynchronous.</h3>
- * <p>
- * All I/O operations in Netty are asynchronous.  It means any I/O calls will
- * return immediately with no guarantee that the requested I/O operation has
- * been completed at the end of the call.  Instead, you will be returned with
- * a {@link ChannelFuture} instance which will notify you when the requested I/O
- * operation has succeeded, failed, or canceled.
- *
- * <h3>Channels are hierarchical</h3>
- * <p>
- * A {@link Channel} can have a {@linkplain #parent() parent} depending on
- * how it was created.  For instance, a {@link SocketChannel}, that was accepted
- * by {@link ServerSocketChannel}, will return the {@link ServerSocketChannel}
- * as its parent on {@link #parent()}.
- * <p>
- * The semantics of the hierarchical structure depends on the transport
- * implementation where the {@link Channel} belongs to.  For example, you could
- * write a new {@link Channel} implementation that creates the sub-channels that
- * share one socket connection, as <a href="http://beepcore.org/">BEEP</a> and
- * <a href="https://en.wikipedia.org/wiki/Secure_Shell">SSH</a> do.
- *
- * <h3>Downcast to access transport-specific operations</h3>
- * <p>
- * Some transports exposes additional operations that is specific to the
- * transport.  Down-cast the {@link Channel} to sub-type to invoke such
- * operations.  For example, with the old I/O datagram transport, multicast
- * join / leave operations are provided by {@link DatagramChannel}.
- *
- * <h3>Release resources</h3>
- * <p>
- * It is important to call {@link #close()} or {@link #close(ChannelPromise)} to release all
- * resources once you are done with the {@link Channel}. This ensures all resources are
- * released in a proper way, i.e. filehandles.
  */
 public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparable<Channel> {
 
@@ -194,28 +151,27 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
     Channel flush();
 
     /**
-     * Unsafe为Channel接口的一个内部接口，用于定义实现对Channel底层的各种操作。
-     * Unsafe接口定义的操作行为只能由Netty框架的Reactor线程调用，用户线程禁止调用。
+     * Unsafe接口
      */
     interface Unsafe {
 
         /**
-         * 分配接收数据使用的Buffer
+         * 分配接收数据用的Buffer
          */
         RecvByteBufAllocator.Handle recvBufAllocHandle();
 
         /**
-         * 服务端绑定的端口地址
+         * 获取服务端绑定的端口地址
          */
         SocketAddress localAddress();
 
         /**
-         * 远端地址
+         * 获取远端地址
          */
         SocketAddress remoteAddress();
 
         /**
-         * Channel向Reactor注册
+         * 向Reactor注册Channel
          */
         void register(EventLoop eventLoop, ChannelPromise promise);
 
@@ -230,22 +186,25 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
         void connect(SocketAddress remoteAddress, SocketAddress localAddress, ChannelPromise promise);
 
         /**
-         * 客户端断开连接服务端
+         * Disconnect the {@link Channel} of the {@link ChannelFuture} and notify the {@link ChannelPromise} once the
+         * operation was complete.
          */
         void disconnect(ChannelPromise promise);
 
         /**
-         * 关闭Channel
+         * 关闭channel
          */
         void close(ChannelPromise promise);
 
         /**
-         * 强制关闭Channel
+         * Closes the {@link Channel} immediately without firing any events.  Probably only useful
+         * when registration attempt failed.
          */
         void closeForcibly();
 
         /**
-         * Channel向Reactor取消注册
+         * Deregister the {@link Channel} of the {@link ChannelPromise} from {@link EventLoop} and notify the
+         * {@link ChannelPromise} once the operation was complete.
          */
         void deregister(ChannelPromise promise);
 
@@ -260,7 +219,7 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
         void write(Object msg, ChannelPromise promise);
 
         /**
-         * Flush out all write operations scheduled via {@link #write(Object, ChannelPromise)}.
+         *
          */
         void flush();
 

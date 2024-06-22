@@ -52,6 +52,12 @@ import static java.lang.Math.min;
  * </p>
  */
 public final class ChannelOutboundBuffer {
+    private static final InternalLogger logger = InternalLoggerFactory.getInstance(ChannelOutboundBuffer.class);
+
+    /**
+     * 不考虑指针压缩的大小 entry对象在堆中占用的内存大小为96
+     * 如果开启指针压缩，entry对象在堆中占用的内存大小 会是64
+     */
     // Assuming a 64-bit JVM:
     //  - 16 bytes object header
     //  - 6 reference fields
@@ -62,7 +68,6 @@ public final class ChannelOutboundBuffer {
     static final int CHANNEL_OUTBOUND_BUFFER_ENTRY_OVERHEAD =
             SystemPropertyUtil.getInt("io.netty.transport.outboundBufferEntrySizeOverhead", 96);
 
-    private static final InternalLogger logger = InternalLoggerFactory.getInstance(ChannelOutboundBuffer.class);
 
     private static final FastThreadLocal<ByteBuffer[]> NIO_BUFFERS = new FastThreadLocal<ByteBuffer[]>() {
         @Override
@@ -71,15 +76,25 @@ public final class ChannelOutboundBuffer {
         }
     };
 
+    /**
+     * channel
+     */
     private final Channel channel;
 
     // Entry(flushedEntry) --> ... Entry(unflushedEntry) --> ... Entry(tailEntry)
     //
-    // The Entry that is the first in the linked-list structure that was flushed
+    /**
+     * 当通过 flush 操作需要将 ChannelOutboundBuffer 中缓存的待发送数据发送到 Socket 中时，flushedEntry 指针会指向 unflushedEntry 的位置，
+     * 这样 flushedEntry 指针和 tailEntry 指针之间的 Entry 就是我们即将发送到 Socket 中的网络数据
+     */
     private Entry flushedEntry;
-    // The Entry which is the first unflushed in the linked-list structure
+    /**
+     * 第一个待发送数据的 Entry
+     */
     private Entry unflushedEntry;
-    // The Entry which represents the tail of the buffer
+    /**
+     * 最后一个待发送数据的 Entry
+     */
     private Entry tailEntry;
     // The number of flushed entries that are not written yet
     private int flushed;
@@ -88,28 +103,37 @@ public final class ChannelOutboundBuffer {
     private long nioBufferSize;
 
     private boolean inFail;
-
+    /**
+     * 水位线指针
+     */
     private static final AtomicLongFieldUpdater<ChannelOutboundBuffer> TOTAL_PENDING_SIZE_UPDATER =
             AtomicLongFieldUpdater.newUpdater(ChannelOutboundBuffer.class, "totalPendingSize");
-
+    /**
+     * ChannelOutboundBuffer中的待发送数据的内存占用总量
+     */
     @SuppressWarnings("UnusedDeclaration")
     private volatile long totalPendingSize;
 
     private static final AtomicIntegerFieldUpdater<ChannelOutboundBuffer> UNWRITABLE_UPDATER =
             AtomicIntegerFieldUpdater.newUpdater(ChannelOutboundBuffer.class, "unwritable");
 
+    /**
+     * channel0可写状态：表示可写，1表示channel不可写
+     */
     @SuppressWarnings("UnusedDeclaration")
     private volatile int unwritable;
 
     private volatile Runnable fireChannelWritabilityChangedTask;
 
+    /**
+     * 构造方法
+     */
     ChannelOutboundBuffer(AbstractChannel channel) {
         this.channel = channel;
     }
 
     /**
-     * Add given message to this {@link ChannelOutboundBuffer}. The given {@link ChannelPromise} will be notified once
-     * the message was written.
+     * 将msg 加入到Netty中的待写入数据缓冲队列ChannelOutboundBuffer中
      */
     public void addMessage(Object msg, int size, ChannelPromise promise) {
         Entry entry = Entry.newInstance(msg, size, total(msg), promise);
@@ -123,10 +147,61 @@ public final class ChannelOutboundBuffer {
         if (unflushedEntry == null) {
             unflushedEntry = entry;
         }
-
-        // increment pending bytes after adding message to the unflushed arrays.
-        // See https://github.com/netty/netty/issues/1619
         incrementPendingOutboundBytes(entry.pendingSize, false);
+    }
+
+    /**
+     * 更新用于记录当前 ChannelOutboundBuffer 中关于待发送数据所占内存总量的水位线指示
+     */
+    private void incrementPendingOutboundBytes(long size, boolean invokeLater) {
+        if (size == 0) {
+            return;
+        }
+        // 更新总共待写入数据的大小
+        long newWriteBufferSize = TOTAL_PENDING_SIZE_UPDATER.addAndGet(this, size);
+        // 如果待写入的数据 大于 高水位线 64 * 1024  则设置当前channel为不可写 由用户自己决定是否继续写入
+        if (newWriteBufferSize > channel.config().getWriteBufferHighWaterMark()) {
+            //设置当前channel状态为不可写，并触发fireChannelWritabilityChanged事件
+            setUnwritable(invokeLater);
+        }
+    }
+
+    /**
+     * 将当前 Channel 的状态设置为不可写状态
+     */
+    private void setUnwritable(boolean invokeLater) {
+        for (;;) {
+            final int oldValue = unwritable;
+            final int newValue = oldValue | 1;
+            if (UNWRITABLE_UPDATER.compareAndSet(this, oldValue, newValue)) {
+                if (oldValue == 0) {
+                    // 触发fireChannelWritabilityChanged事件，表示当前channel变为不可写
+                    fireChannelWritabilityChanged(invokeLater);
+                }
+                break;
+            }
+        }
+    }
+
+    /**
+     * 传播fireChannelWritabilityChanged事件
+     */
+    private void fireChannelWritabilityChanged(boolean invokeLater) {
+        final ChannelPipeline pipeline = channel.pipeline();
+        if (invokeLater) {
+            Runnable task = fireChannelWritabilityChangedTask;
+            if (task == null) {
+                fireChannelWritabilityChangedTask = task = new Runnable() {
+                    @Override
+                    public void run() {
+                        pipeline.fireChannelWritabilityChanged();
+                    }
+                };
+            }
+            channel.eventLoop().execute(task);
+        } else {
+            pipeline.fireChannelWritabilityChanged();
+        }
     }
 
     /**
@@ -134,10 +209,6 @@ public final class ChannelOutboundBuffer {
      * and so you will be able to handle them.
      */
     public void addFlush() {
-        // There is no need to process all entries if there was already a flush before and no new messages
-        // where added in the meantime.
-        //
-        // See https://github.com/netty/netty/issues/2577
         Entry entry = unflushedEntry;
         if (entry != null) {
             if (flushedEntry == null) {
@@ -146,6 +217,7 @@ public final class ChannelOutboundBuffer {
             }
             do {
                 flushed ++;
+                // 如果当前entry对应的write操作被用户取消，则释放msg，并降低channelOutboundBuffer水位线
                 if (!entry.promise.setUncancellable()) {
                     // Was cancelled so make sure we free up memory and notify about the freed bytes
                     int pending = entry.cancel();
@@ -160,6 +232,52 @@ public final class ChannelOutboundBuffer {
     }
 
     /**
+     * 减少 ChannelOutboundBuffer 的内存占用总量的水位线 totalPendingSize
+     */
+    private void decrementPendingOutboundBytes(long size, boolean invokeLater, boolean notifyWritability) {
+        if (size == 0) {
+            return;
+        }
+        long newWriteBufferSize = TOTAL_PENDING_SIZE_UPDATER.addAndGet(this, -size);
+        if (notifyWritability && newWriteBufferSize < channel.config().getWriteBufferLowWaterMark()) {
+            setWritable(invokeLater);
+        }
+    }
+
+    /**
+     * 将当前 Channel 的状态设置为可写状态
+     */
+    private void setWritable(boolean invokeLater) {
+        for (;;) {
+            final int oldValue = unwritable;
+            final int newValue = oldValue & ~1;
+            if (UNWRITABLE_UPDATER.compareAndSet(this, oldValue, newValue)) {
+                if (oldValue != 0 && newValue == 0) {
+                    // 在 pipeline 中再次触发 ChannelWritabilityChanged 事件的传播
+                    fireChannelWritabilityChanged(invokeLater);
+                }
+                break;
+            }
+        }
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    /**
      * Increment the pending bytes which will be written at some point.
      * This method is thread-safe!
      */
@@ -167,16 +285,6 @@ public final class ChannelOutboundBuffer {
         incrementPendingOutboundBytes(size, true);
     }
 
-    private void incrementPendingOutboundBytes(long size, boolean invokeLater) {
-        if (size == 0) {
-            return;
-        }
-
-        long newWriteBufferSize = TOTAL_PENDING_SIZE_UPDATER.addAndGet(this, size);
-        if (newWriteBufferSize > channel.config().getWriteBufferHighWaterMark()) {
-            setUnwritable(invokeLater);
-        }
-    }
 
     /**
      * Decrement the pending bytes which will be written at some point.
@@ -186,16 +294,7 @@ public final class ChannelOutboundBuffer {
         decrementPendingOutboundBytes(size, true, true);
     }
 
-    private void decrementPendingOutboundBytes(long size, boolean invokeLater, boolean notifyWritability) {
-        if (size == 0) {
-            return;
-        }
 
-        long newWriteBufferSize = TOTAL_PENDING_SIZE_UPDATER.addAndGet(this, -size);
-        if (notifyWritability && newWriteBufferSize < channel.config().getWriteBufferLowWaterMark()) {
-            setWritable(invokeLater);
-        }
-    }
 
     private static long total(Object msg) {
         if (msg instanceof ByteBuf) {
@@ -291,6 +390,7 @@ public final class ChannelOutboundBuffer {
     private boolean remove0(Throwable cause, boolean notifyWritability) {
         Entry e = flushedEntry;
         if (e == null) {
+            // 清空当前reactor线程缓存的所有待发送数据
             clearNioBuffers();
             return false;
         }
@@ -299,17 +399,20 @@ public final class ChannelOutboundBuffer {
         ChannelPromise promise = e.promise;
         int size = e.pendingSize;
 
+        // 从channelOutboundBuffer中删除该Entry节点
         removeEntry(e);
 
         if (!e.cancelled) {
             // only release message, fail and decrement if it was not canceled before.
+            // 释放msg所占用的内存空间
             ReferenceCountUtil.safeRelease(msg);
-
+            // 设置promise发送失败
             safeFail(promise, cause);
+            // 由于msg得到释放，所以需要降低channelOutboundBuffer中的内存占用水位线，并根据notifyWritability决定是否触发ChannelWritabilityChanged事件
             decrementPendingOutboundBytes(size, false, notifyWritability);
         }
 
-        // recycle the entry
+        // 回收Entry实例对象
         e.recycle();
 
         return true;
@@ -585,49 +688,11 @@ public final class ChannelOutboundBuffer {
         return 1 << index;
     }
 
-    private void setWritable(boolean invokeLater) {
-        for (;;) {
-            final int oldValue = unwritable;
-            final int newValue = oldValue & ~1;
-            if (UNWRITABLE_UPDATER.compareAndSet(this, oldValue, newValue)) {
-                if (oldValue != 0 && newValue == 0) {
-                    fireChannelWritabilityChanged(invokeLater);
-                }
-                break;
-            }
-        }
-    }
 
-    private void setUnwritable(boolean invokeLater) {
-        for (;;) {
-            final int oldValue = unwritable;
-            final int newValue = oldValue | 1;
-            if (UNWRITABLE_UPDATER.compareAndSet(this, oldValue, newValue)) {
-                if (oldValue == 0) {
-                    fireChannelWritabilityChanged(invokeLater);
-                }
-                break;
-            }
-        }
-    }
 
-    private void fireChannelWritabilityChanged(boolean invokeLater) {
-        final ChannelPipeline pipeline = channel.pipeline();
-        if (invokeLater) {
-            Runnable task = fireChannelWritabilityChangedTask;
-            if (task == null) {
-                fireChannelWritabilityChangedTask = task = new Runnable() {
-                    @Override
-                    public void run() {
-                        pipeline.fireChannelWritabilityChanged();
-                    }
-                };
-            }
-            channel.eventLoop().execute(task);
-        } else {
-            pipeline.fireChannelWritabilityChanged();
-        }
-    }
+
+
+
 
     /**
      * Returns the number of flushed messages in this {@link ChannelOutboundBuffer}.
@@ -644,19 +709,19 @@ public final class ChannelOutboundBuffer {
         return flushed == 0;
     }
 
+    /**
+     * 在 Netty 在发送数据的时候，如果发现当前 channel 处于非活跃状态，则将 ChannelOutboundBuffer 中 flushedEntry 与tailEntry 之间的 Entry 对象节点
+     * 全部删除，并释放发送数据占用的内存空间，同时回收 Entry 对象实例
+     */
     void failFlushed(Throwable cause, boolean notify) {
-        // Make sure that this method does not reenter.  A listener added to the current promise can be notified by the
-        // current thread in the tryFailure() call of the loop below, and the listener can trigger another fail() call
-        // indirectly (usually by closing the channel.)
-        //
-        // See https://github.com/netty/netty/issues/1501
         if (inFail) {
             return;
         }
-
         try {
             inFail = true;
             for (;;) {
+                // 循环清除channelOutboundBuffer中的待发送数据
+                // 将entry从buffer中删除，并释放entry中的bytebuffer，通知promise failed
                 if (!remove0(cause, notify)) {
                     break;
                 }
@@ -688,6 +753,7 @@ public final class ChannelOutboundBuffer {
         }
 
         // Release all unflushed messages.
+        // 循环清理channelOutboundBuffer中的unflushedEntry，因为在执行关闭之前有可能用户有一些数据write进来，需要清理掉
         try {
             Entry e = unflushedEntry;
             while (e != null) {
@@ -696,7 +762,9 @@ public final class ChannelOutboundBuffer {
                 TOTAL_PENDING_SIZE_UPDATER.addAndGet(this, -size);
 
                 if (!e.cancelled) {
+                    // 释放unflushedEntry中的bytebuffer
                     ReferenceCountUtil.safeRelease(e.msg);
+                    // 通知unflushedEntry中的promise failed
                     safeFail(e.promise, cause);
                 }
                 e = e.recycleAndGetNext();
@@ -704,6 +772,7 @@ public final class ChannelOutboundBuffer {
         } finally {
             inFail = false;
         }
+        // 清理channel用于缓存JDK nioBuffer的 threadLocal缓存NIO_BUFFERS
         clearNioBuffers();
     }
 
@@ -797,33 +866,73 @@ public final class ChannelOutboundBuffer {
         boolean processMessage(Object msg) throws Exception;
     }
 
+    /**
+     * ChannelOutboundBuffer 链表结构中的节点元素类型，封装了待发送数据的各种信息
+     */
     static final class Entry {
+        /**
+         * Entry的对象池，用来创建和回收Entry对象
+         */
         private static final ObjectPool<Entry> RECYCLER = ObjectPool.newPool(new ObjectCreator<Entry>() {
             @Override
             public Entry newObject(Handle<Entry> handle) {
                 return new Entry(handle);
             }
         });
-
+        /**
+         * recyclerHandle用于回收对象：DefaultHandle
+         */
         private final Handle<Entry> handle;
+        /**
+         * 下一个节点
+         */
         Entry next;
+        /**
+         * 待发送数据
+         */
         Object msg;
+        /**
+         * msg 转换为 jdk nio 中的byteBuffer
+         * Netty 最终发送数据是通过 JDK NIO 底层的 SocketChannel 进行发送，所以需要将 Netty 中实现的 ByteBuffer 类型转换为 JDK NIO ByteBuffer 类型
+         */
         ByteBuffer[] bufs;
         ByteBuffer buf;
+        /**
+         * 异步write操作的future
+         */
         ChannelPromise promise;
+        /**
+         * 已发送了多少
+         */
         long progress;
+        /**
+         * 总共需要发送多少，不包含entry对象大小
+         */
         long total;
+        /**
+         * entry对象在堆中需要的内存总量：待发送数据大小 + entry对象本身在堆中占用内存大小（96），记录当前待发送数据的内存占用总量，从而可以预警 OOM 的发生
+         */
         int pendingSize;
+        /**
+         * msg中包含了几个jdk nio bytebuffer
+         */
         int count = -1;
+        /**
+         * write操作是否被取消
+         */
         boolean cancelled;
 
         private Entry(Handle<Entry> handle) {
             this.handle = handle;
         }
 
+        /**
+         * 创建Entry对象来封装待发送数据信息
+         */
         static Entry newInstance(Object msg, int size, long total, ChannelPromise promise) {
             Entry entry = RECYCLER.get();
             entry.msg = msg;
+            // 待发数据数据大小 + entry对象大小
             entry.pendingSize = size + CHANNEL_OUTBOUND_BUFFER_ENTRY_OVERHEAD;
             entry.total = total;
             entry.promise = promise;
@@ -849,6 +958,9 @@ public final class ChannelOutboundBuffer {
             return 0;
         }
 
+        /**
+         * 将对象回收进对象池中：清空对象中的所有属性、通过对象中持有的对象池句柄Handler，将对象回收进对象池中
+         */
         void recycle() {
             next = null;
             bufs = null;

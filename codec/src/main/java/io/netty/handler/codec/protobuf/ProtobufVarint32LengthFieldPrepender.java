@@ -23,6 +23,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.MessageToByteEncoder;
 
 /**
+ * Varint：长度字段的长度可变，值越小的数字使用越少的字节数
  * An encoder that prepends the Google Protocol Buffers
  * <a href="https://developers.google.com/protocol-buffers/docs/encoding?csw=1#varints">Base
  * 128 Varints</a> integer length field. For example:

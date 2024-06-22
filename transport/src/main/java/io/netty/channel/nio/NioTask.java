@@ -20,9 +20,8 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 
 /**
- * An arbitrary task that can be executed by {@link NioEventLoop} when a {@link SelectableChannel} becomes ready.
- *
- * @see NioEventLoop#register(SelectableChannel, int, NioTask)
+ * NioTask：Netty提供给用户可以自定义一些当Channel上发生IO就绪事件时的自定义处理
+ * NioTask和Channel其实本质上是一样的都是负责处理Channel上的IO就绪事件，只不过一个是用户自定义处理，一个是Netty框架处理。
  */
 public interface NioTask<C extends SelectableChannel> {
     /**
