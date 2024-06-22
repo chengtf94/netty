@@ -6,6 +6,7 @@ import io.netty.example.chengtf.study.jksj.common.Operation;
 import io.netty.example.chengtf.study.jksj.common.OperationResult;
 import io.netty.example.chengtf.study.jksj.common.RequestMessage;
 import io.netty.example.chengtf.study.jksj.common.ResponseMessage;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 点单服务业务处理器
@@ -13,6 +14,7 @@ import io.netty.example.chengtf.study.jksj.common.ResponseMessage;
  * @author: chengtf
  * @date: 2024/6/17
  */
+@Slf4j
 public class OrderServerProcessHandler extends SimpleChannelInboundHandler<RequestMessage> {
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, RequestMessage requestMessage) throws Exception {
@@ -23,7 +25,12 @@ public class OrderServerProcessHandler extends SimpleChannelInboundHandler<Reque
         responseMessage.setMessageHeader(requestMessage.getMessageHeader());
         responseMessage.setMessageBody(operationResult);
 
-        ctx.writeAndFlush(responseMessage);
+        if (ctx.channel().isActive() && ctx.channel().isWritable()) {
+            ctx.writeAndFlush(responseMessage);
+        } else {
+            log.error("not writable now, message dropped");
+        }
+
     }
 
 

@@ -23,7 +23,7 @@ import java.util.concurrent.ExecutionException;
  * @author: chengtf
  * @date: 2024/6/17
  */
-public class Server {
+public class ServerV1 {
 
     public static void main(String[] args) throws InterruptedException, ExecutionException {
 
