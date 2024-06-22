@@ -15,19 +15,13 @@
  */
 package io.netty.handler.codec.string;
 
-import com.sun.xml.internal.bind.v2.TODO;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandler.Sharable;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelPipeline;
-import io.netty.handler.codec.ByteToMessageDecoder;
-import io.netty.handler.codec.DelimiterBasedFrameDecoder;
-import io.netty.handler.codec.LineBasedFrameDecoder;
 import io.netty.handler.codec.MessageToMessageDecoder;
 import io.netty.util.internal.ObjectUtil;
 
 import java.nio.charset.Charset;
-import java.nio.charset.CharsetDecoder;
 import java.util.List;
 
 /**
