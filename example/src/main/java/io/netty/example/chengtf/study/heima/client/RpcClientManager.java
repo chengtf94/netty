@@ -1,17 +1,17 @@
 package io.netty.example.chengtf.study.heima.client;
 
-import cn.itcast.client.handler.RpcResponseMessageHandler;
-import cn.itcast.message.RpcRequestMessage;
-import cn.itcast.protocol.MessageCodecSharable;
-import cn.itcast.protocol.ProcotolFrameDecoder;
-import cn.itcast.protocol.SequenceIdGenerator;
-import cn.itcast.server.service.HelloService;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.example.chengtf.study.heima.client.handler.RpcResponseMessageHandler;
+import io.netty.example.chengtf.study.heima.message.RpcRequestMessage;
+import io.netty.example.chengtf.study.heima.protocol.MessageCodecSharable;
+import io.netty.example.chengtf.study.heima.protocol.ProcotolFrameDecoder;
+import io.netty.example.chengtf.study.heima.protocol.SequenceIdGenerator;
+import io.netty.example.chengtf.study.heima.server.service.HelloService;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 import io.netty.util.concurrent.DefaultPromise;

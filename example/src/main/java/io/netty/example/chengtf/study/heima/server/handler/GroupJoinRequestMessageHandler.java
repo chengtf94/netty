@@ -5,7 +5,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.example.chengtf.study.heima.message.GroupJoinRequestMessage;
 import io.netty.example.chengtf.study.heima.message.GroupJoinResponseMessage;
-import io.netty.example.chengtf.study.heima.protocol.Group;
+import io.netty.example.chengtf.study.heima.server.session.Group;
 import io.netty.example.chengtf.study.heima.server.session.GroupSessionFactory;
 
 @ChannelHandler.Sharable

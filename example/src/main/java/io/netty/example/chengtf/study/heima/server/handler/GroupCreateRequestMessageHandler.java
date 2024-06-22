@@ -6,7 +6,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.example.chengtf.study.heima.message.GroupCreateRequestMessage;
 import io.netty.example.chengtf.study.heima.message.GroupCreateResponseMessage;
-import io.netty.example.chengtf.study.heima.protocol.Group;
+import io.netty.example.chengtf.study.heima.server.session.Group;
 import io.netty.example.chengtf.study.heima.server.session.GroupSession;
 import io.netty.example.chengtf.study.heima.server.session.GroupSessionFactory;
 
