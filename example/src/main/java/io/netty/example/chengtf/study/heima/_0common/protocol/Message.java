@@ -1,6 +1,6 @@
 package io.netty.example.chengtf.study.heima._0common.protocol;
 
-import io.netty.example.chengtf.study.heima.chatroom.message.*;
+import io.netty.example.chengtf.study.heima.chat.message.*;
 import io.netty.example.chengtf.study.heima.rpc.message.RpcRequestMessage;
 import io.netty.example.chengtf.study.heima.rpc.message.RpcResponseMessage;
 import lombok.Data;
@@ -52,11 +52,11 @@ public abstract class Message implements Serializable {
     private static final Map<Integer, Class<? extends Message>> messageClasses = new HashMap<>();
 
     static {
-        messageClasses.put(LoginRequestMessage, io.netty.example.chengtf.study.heima.chatroom.message.LoginRequestMessage.class);
-        messageClasses.put(LoginResponseMessage, io.netty.example.chengtf.study.heima.chatroom.message.LoginResponseMessage.class);
-        messageClasses.put(ChatRequestMessage, io.netty.example.chengtf.study.heima.chatroom.message.ChatRequestMessage.class);
-        messageClasses.put(ChatResponseMessage, io.netty.example.chengtf.study.heima.chatroom.message.ChatResponseMessage.class);
-        messageClasses.put(GroupCreateRequestMessage, io.netty.example.chengtf.study.heima.chatroom.message.GroupCreateRequestMessage.class);
+        messageClasses.put(LoginRequestMessage, io.netty.example.chengtf.study.heima.chat.message.LoginRequestMessage.class);
+        messageClasses.put(LoginResponseMessage, io.netty.example.chengtf.study.heima.chat.message.LoginResponseMessage.class);
+        messageClasses.put(ChatRequestMessage, io.netty.example.chengtf.study.heima.chat.message.ChatRequestMessage.class);
+        messageClasses.put(ChatResponseMessage, io.netty.example.chengtf.study.heima.chat.message.ChatResponseMessage.class);
+        messageClasses.put(GroupCreateRequestMessage, io.netty.example.chengtf.study.heima.chat.message.GroupCreateRequestMessage.class);
         messageClasses.put(GroupCreateResponseMessage, GroupCreateResponseMessage.class);
         messageClasses.put(GroupJoinRequestMessage, GroupJoinRequestMessage.class);
         messageClasses.put(GroupJoinResponseMessage, GroupJoinResponseMessage.class);

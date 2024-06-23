@@ -4,7 +4,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.embedded.EmbeddedChannel;
-import io.netty.example.chengtf.study.heima.chatroom.message.LoginRequestMessage;
+import io.netty.example.chengtf.study.heima.chat.message.LoginRequestMessage;
 import io.netty.handler.codec.ByteToMessageCodec;
 import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
 import io.netty.handler.logging.LogLevel;
