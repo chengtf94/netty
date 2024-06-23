@@ -1,7 +1,7 @@
-package io.netty.example.chengtf.study.jksj.common;
+package io.netty.example.chengtf.study.jksj._0common;
 
 import io.netty.buffer.ByteBuf;
-import io.netty.example.chengtf.study.jksj.util.JsonUtil;
+import io.netty.example.chengtf.study.jksj._0common.util.JsonUtil;
 import lombok.Data;
 import lombok.Getter;
 

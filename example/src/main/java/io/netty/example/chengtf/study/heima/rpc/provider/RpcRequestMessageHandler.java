@@ -6,7 +6,7 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.example.chengtf.study.heima.rpc.message.RpcRequestMessage;
 import io.netty.example.chengtf.study.heima.rpc.message.RpcResponseMessage;
 import io.netty.example.chengtf.study.heima.rpc.api.HelloService;
-import io.netty.example.chengtf.study.heima.common.BeanFactory;
+import io.netty.example.chengtf.study.heima._0common.BeanFactory;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.InvocationTargetException;

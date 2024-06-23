@@ -1,6 +1,6 @@
-package io.netty.example.chengtf.study.jksj.common.keepalive;
+package io.netty.example.chengtf.study.jksj._0common.keepalive;
 
-import io.netty.example.chengtf.study.jksj.common.Operation;
+import io.netty.example.chengtf.study.jksj._0common.Operation;
 import lombok.Data;
 import lombok.extern.java.Log;
 

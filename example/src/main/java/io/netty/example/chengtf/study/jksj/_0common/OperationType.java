@@ -1,11 +1,11 @@
-package io.netty.example.chengtf.study.jksj.common;
+package io.netty.example.chengtf.study.jksj._0common;
 
-import io.netty.example.chengtf.study.jksj.common.auth.AuthOperation;
-import io.netty.example.chengtf.study.jksj.common.auth.AuthOperationResult;
-import io.netty.example.chengtf.study.jksj.common.keepalive.KeepaliveOperation;
-import io.netty.example.chengtf.study.jksj.common.keepalive.KeepaliveOperationResult;
-import io.netty.example.chengtf.study.jksj.common.order.OrderOperation;
-import io.netty.example.chengtf.study.jksj.common.order.OrderOperationResult;
+import io.netty.example.chengtf.study.jksj._0common.auth.AuthOperation;
+import io.netty.example.chengtf.study.jksj._0common.auth.AuthOperationResult;
+import io.netty.example.chengtf.study.jksj._0common.keepalive.KeepaliveOperation;
+import io.netty.example.chengtf.study.jksj._0common.keepalive.KeepaliveOperationResult;
+import io.netty.example.chengtf.study.jksj._0common.order.OrderOperation;
+import io.netty.example.chengtf.study.jksj._0common.order.OrderOperationResult;
 
 import java.util.function.Predicate;
 

@@ -1,4 +1,4 @@
-package io.netty.example.chengtf.study.heima.common.protocol;
+package io.netty.example.chengtf.study.heima._0common.protocol;
 
 import io.netty.example.chengtf.study.heima.chatroom.message.*;
 import io.netty.example.chengtf.study.heima.rpc.message.RpcRequestMessage;

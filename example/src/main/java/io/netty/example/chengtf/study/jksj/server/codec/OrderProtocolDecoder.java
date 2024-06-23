@@ -2,7 +2,7 @@ package io.netty.example.chengtf.study.jksj.server.codec;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.example.chengtf.study.jksj.common.RequestMessage;
+import io.netty.example.chengtf.study.jksj._0common.RequestMessage;
 import io.netty.handler.codec.MessageToMessageDecoder;
 
 import java.util.List;

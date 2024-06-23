@@ -1,6 +1,6 @@
-package io.netty.example.chengtf.study.jksj.common.order;
+package io.netty.example.chengtf.study.jksj._0common.order;
 
-import io.netty.example.chengtf.study.jksj.common.OperationResult;
+import io.netty.example.chengtf.study.jksj._0common.OperationResult;
 import lombok.Data;
 
 /**

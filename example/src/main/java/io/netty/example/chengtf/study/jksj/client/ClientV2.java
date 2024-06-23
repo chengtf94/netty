@@ -10,10 +10,9 @@ import io.netty.example.chengtf.study.jksj.client.codec.*;
 import io.netty.example.chengtf.study.jksj.client.handler.dispatcher.OperationResultFuture;
 import io.netty.example.chengtf.study.jksj.client.handler.dispatcher.RequestPendingCenter;
 import io.netty.example.chengtf.study.jksj.client.handler.dispatcher.ResponseDispatcherHandler;
-import io.netty.example.chengtf.study.jksj.common.OperationResult;
-import io.netty.example.chengtf.study.jksj.common.RequestMessage;
-import io.netty.example.chengtf.study.jksj.common.order.OrderOperation;
-import io.netty.example.chengtf.study.jksj.util.IdUtil;
+import io.netty.example.chengtf.study.jksj._0common.RequestMessage;
+import io.netty.example.chengtf.study.jksj._0common.order.OrderOperation;
+import io.netty.example.chengtf.study.jksj._0common.util.IdUtil;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 

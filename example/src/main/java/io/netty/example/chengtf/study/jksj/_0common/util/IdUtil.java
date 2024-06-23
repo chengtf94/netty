@@ -1,4 +1,4 @@
-package io.netty.example.chengtf.study.jksj.util;
+package io.netty.example.chengtf.study.jksj._0common.util;
 
 import java.util.concurrent.atomic.AtomicLong;
 

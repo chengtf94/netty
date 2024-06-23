@@ -1,4 +1,4 @@
-package io.netty.example.chengtf.study.heima.common.protocol;
+package io.netty.example.chengtf.study.heima._0common.protocol;
 
 import com.google.gson.*;
 

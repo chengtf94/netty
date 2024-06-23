@@ -1,6 +1,6 @@
-package io.netty.example.chengtf.study.heima.common;
+package io.netty.example.chengtf.study.heima._0common;
 
-import io.netty.example.chengtf.study.heima.common.protocol.Serializer;
+import io.netty.example.chengtf.study.heima._0common.protocol.Serializer;
 
 import java.io.IOException;
 import java.io.InputStream;

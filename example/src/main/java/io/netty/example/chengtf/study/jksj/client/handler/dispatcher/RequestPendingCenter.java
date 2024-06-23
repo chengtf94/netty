@@ -1,6 +1,6 @@
 package io.netty.example.chengtf.study.jksj.client.handler.dispatcher;
 
-import io.netty.example.chengtf.study.jksj.common.OperationResult;
+import io.netty.example.chengtf.study.jksj._0common.OperationResult;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;

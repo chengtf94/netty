@@ -2,10 +2,10 @@ package io.netty.example.chengtf.study.jksj.server.handler;
 
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
-import io.netty.example.chengtf.study.jksj.common.Operation;
-import io.netty.example.chengtf.study.jksj.common.OperationResult;
-import io.netty.example.chengtf.study.jksj.common.RequestMessage;
-import io.netty.example.chengtf.study.jksj.common.ResponseMessage;
+import io.netty.example.chengtf.study.jksj._0common.Operation;
+import io.netty.example.chengtf.study.jksj._0common.OperationResult;
+import io.netty.example.chengtf.study.jksj._0common.RequestMessage;
+import io.netty.example.chengtf.study.jksj._0common.ResponseMessage;
 import lombok.extern.slf4j.Slf4j;
 
 /**

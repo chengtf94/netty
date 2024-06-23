@@ -1,4 +1,4 @@
-package io.netty.example.chengtf.study.jksj.common;
+package io.netty.example.chengtf.study.jksj._0common;
 
 /**
  * 操作基类

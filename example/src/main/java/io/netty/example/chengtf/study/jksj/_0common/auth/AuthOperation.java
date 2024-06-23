@@ -1,6 +1,6 @@
-package io.netty.example.chengtf.study.jksj.common.auth;
+package io.netty.example.chengtf.study.jksj._0common.auth;
 
-import io.netty.example.chengtf.study.jksj.common.Operation;
+import io.netty.example.chengtf.study.jksj._0common.Operation;
 import lombok.Data;
 import lombok.extern.java.Log;
 
