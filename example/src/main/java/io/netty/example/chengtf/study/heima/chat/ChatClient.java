@@ -22,6 +22,12 @@ import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+/**
+ * 聊天客户端
+ *
+ * @author: chengtf
+ * @date: 2024/6/17
+ */
 @Slf4j
 public class ChatClient {
 
@@ -59,7 +65,10 @@ public class ChatClient {
                         }
                     });
                     ch.pipeline().addLast("client handler", new ChannelInboundHandlerAdapter() {
-                        // 接收响应消息
+
+                        /**
+                         * 接收响应消息
+                         */
                         @Override
                         public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
                             log.debug("msg: {}", msg);
@@ -74,7 +83,9 @@ public class ChatClient {
                             }
                         }
 
-                        // 在连接建立后触发 active 事件
+                        /**
+                         * 在连接建立后触发 active 事件
+                         */
                         @Override
                         public void channelActive(ChannelHandlerContext ctx) throws Exception {
                             // 负责接收用户在控制台的输入，负责向服务器发送各种消息
@@ -154,19 +165,24 @@ public class ChatClient {
                             }, "system in").start();
                         }
 
-                        // 在连接断开时触发
+                        /**
+                         * 在连接断开时触发
+                         */
                         @Override
                         public void channelInactive(ChannelHandlerContext ctx) throws Exception {
                             log.debug("连接已经断开，按任意键退出..");
                             EXIT.set(true);
                         }
 
-                        // 在出现异常时触发
+                        /**
+                         * 在出现异常时触发
+                         */
                         @Override
                         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
                             log.debug("连接已经断开，按任意键退出..{}", cause.getMessage());
                             EXIT.set(true);
                         }
+
                     });
                 }
             });

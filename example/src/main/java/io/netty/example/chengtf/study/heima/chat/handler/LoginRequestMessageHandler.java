@@ -8,8 +8,15 @@ import io.netty.example.chengtf.study.heima.chat.message.LoginResponseMessage;
 import io.netty.example.chengtf.study.heima.chat.service.UserServiceFactory;
 import io.netty.example.chengtf.study.heima.chat.session.SessionFactory;
 
+/**
+ * 登录请求处理器
+ *
+ * @author: chengtf
+ * @date: 2024/6/17
+ */
 @ChannelHandler.Sharable
 public class LoginRequestMessageHandler extends SimpleChannelInboundHandler<LoginRequestMessage> {
+
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, LoginRequestMessage msg) throws Exception {
         String username = msg.getUsername();
@@ -24,4 +31,5 @@ public class LoginRequestMessageHandler extends SimpleChannelInboundHandler<Logi
         }
         ctx.writeAndFlush(message);
     }
+
 }
