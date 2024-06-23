@@ -2,11 +2,9 @@ package io.netty.example.chengtf.study.heima.common.protocol;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
-import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.example.chengtf.study.heima.chat.message.LoginRequestMessage;
-import io.netty.example.chengtf.study.heima.common.message.Message;
 import io.netty.handler.codec.ByteToMessageCodec;
 import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
 import io.netty.handler.logging.LogLevel;
@@ -20,7 +18,7 @@ import java.io.ObjectOutputStream;
 import java.util.List;
 
 /**
- * 协议编解码器
+ * 协议编解码器：注意不可共享
  *
  * @author: chengtf
  * @date: 2024/6/17

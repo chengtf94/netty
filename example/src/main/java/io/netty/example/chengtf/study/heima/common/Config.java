@@ -1,4 +1,4 @@
-package io.netty.example.chengtf.study.heima.common.config;
+package io.netty.example.chengtf.study.heima.common;
 
 import io.netty.example.chengtf.study.heima.common.protocol.Serializer;
 
@@ -13,6 +13,7 @@ import java.util.Properties;
  * @date: 2024/6/17
  */
 public abstract class Config {
+
     static Properties properties;
 
     static {

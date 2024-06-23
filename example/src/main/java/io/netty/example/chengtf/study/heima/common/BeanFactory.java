@@ -1,8 +1,6 @@
 package io.netty.example.chengtf.study.heima.common;
 
 
-import io.netty.example.chengtf.study.heima.common.config.Config;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Map;
