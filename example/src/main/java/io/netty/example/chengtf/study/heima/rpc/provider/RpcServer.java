@@ -31,6 +31,7 @@ public class RpcServer {
             ServerBootstrap serverBootstrap = new ServerBootstrap();
             serverBootstrap.channel(NioServerSocketChannel.class);
             serverBootstrap.group(boss, worker);
+            serverBootstrap.handler(LOGGING_HANDLER);
             serverBootstrap.childHandler(new ChannelInitializer<SocketChannel>() {
                 @Override
                 protected void initChannel(SocketChannel ch) throws Exception {
