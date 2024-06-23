@@ -3,8 +3,8 @@ package io.netty.example.chengtf.study.heima.chat.handler;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
-import io.netty.example.chengtf.study.heima.message.LoginRequestMessage;
-import io.netty.example.chengtf.study.heima.message.LoginResponseMessage;
+import io.netty.example.chengtf.study.heima.chat.message.LoginRequestMessage;
+import io.netty.example.chengtf.study.heima.chat.message.LoginResponseMessage;
 import io.netty.example.chengtf.study.heima.chat.service.UserServiceFactory;
 import io.netty.example.chengtf.study.heima.chat.session.SessionFactory;
 

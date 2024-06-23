@@ -4,8 +4,8 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
-import io.netty.example.chengtf.study.heima.message.ChatRequestMessage;
-import io.netty.example.chengtf.study.heima.message.ChatResponseMessage;
+import io.netty.example.chengtf.study.heima.chat.message.ChatRequestMessage;
+import io.netty.example.chengtf.study.heima.chat.message.ChatResponseMessage;
 import io.netty.example.chengtf.study.heima.chat.session.SessionFactory;
 
 @ChannelHandler.Sharable

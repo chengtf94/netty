@@ -3,8 +3,8 @@ package io.netty.example.chengtf.study.heima.chat.handler;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
-import io.netty.example.chengtf.study.heima.message.GroupJoinResponseMessage;
-import io.netty.example.chengtf.study.heima.message.GroupQuitRequestMessage;
+import io.netty.example.chengtf.study.heima.chat.message.GroupJoinResponseMessage;
+import io.netty.example.chengtf.study.heima.chat.message.GroupQuitRequestMessage;
 import io.netty.example.chengtf.study.heima.chat.session.Group;
 import io.netty.example.chengtf.study.heima.chat.session.GroupSessionFactory;
 

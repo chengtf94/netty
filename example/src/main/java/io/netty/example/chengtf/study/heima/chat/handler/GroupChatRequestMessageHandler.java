@@ -4,8 +4,8 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
-import io.netty.example.chengtf.study.heima.message.GroupChatRequestMessage;
-import io.netty.example.chengtf.study.heima.message.GroupChatResponseMessage;
+import io.netty.example.chengtf.study.heima.chat.message.GroupChatRequestMessage;
+import io.netty.example.chengtf.study.heima.chat.message.GroupChatResponseMessage;
 import io.netty.example.chengtf.study.heima.chat.session.GroupSessionFactory;
 
 import java.util.List;
