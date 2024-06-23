@@ -1,10 +1,16 @@
 package io.netty.example.chengtf.study.heima.common.protocol;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.embedded.EmbeddedChannel;
+import io.netty.example.chengtf.study.heima.chat.message.LoginRequestMessage;
 import io.netty.example.chengtf.study.heima.common.message.Message;
 import io.netty.handler.codec.ByteToMessageCodec;
+import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
+import io.netty.handler.logging.LogLevel;
+import io.netty.handler.logging.LoggingHandler;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.ByteArrayInputStream;
@@ -20,7 +26,7 @@ import java.util.List;
  * @date: 2024/6/17
  */
 @Slf4j
-@ChannelHandler.Sharable
+//@ChannelHandler.Sharable
 public class MessageCodec extends ByteToMessageCodec<Message> {
 
     @Override
@@ -65,4 +71,21 @@ public class MessageCodec extends ByteToMessageCodec<Message> {
         log.debug("{}", message);
         out.add(message);
     }
+
+    public static void main(String[] args) throws Exception {
+        EmbeddedChannel embeddedChannel = new EmbeddedChannel(
+                new LengthFieldBasedFrameDecoder(1024, 12, 4, 0, 0),
+                new LoggingHandler(LogLevel.INFO),
+                new MessageCodec()
+        );
+        // encode
+        LoginRequestMessage message = new LoginRequestMessage("chengtf", "123456");
+        embeddedChannel.writeOneOutbound(message);
+        // decode
+        ByteBuf buffer = ByteBufAllocator.DEFAULT.buffer();
+        new MessageCodec().encode(null, message, buffer);
+        embeddedChannel.writeInbound(buffer);
+
+    }
+
 }

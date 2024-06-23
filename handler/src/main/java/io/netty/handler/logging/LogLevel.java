@@ -18,7 +18,7 @@ package io.netty.handler.logging;
 import io.netty.util.internal.logging.InternalLogLevel;
 
 /**
- * Maps the regular {@link LogLevel}s with the {@link InternalLogLevel} ones.
+ * 日志级别：Maps the regular {@link LogLevel}s with the {@link InternalLogLevel} ones.
  */
 public enum LogLevel {
     TRACE(InternalLogLevel.TRACE),

@@ -34,6 +34,7 @@ import static io.netty.buffer.ByteBufUtil.appendPrettyHexDump;
 import static io.netty.util.internal.StringUtil.NEWLINE;
 
 /**
+ * 日志处理器：可在多个Reactor线程之间共享使用
  * A {@link ChannelHandler} that logs all events using a logging framework.
  * By default, all events are logged at <tt>DEBUG</tt> level and full hex dumps are recorded for ByteBufs.
  */
@@ -41,39 +42,26 @@ import static io.netty.util.internal.StringUtil.NEWLINE;
 @SuppressWarnings({ "StringConcatenationInsideStringBufferAppend", "StringBufferReplaceableByString" })
 public class LoggingHandler extends ChannelDuplexHandler {
 
+    /**
+     * 日志级别
+     */
     private static final LogLevel DEFAULT_LEVEL = LogLevel.DEBUG;
-
+    private final LogLevel level;
     protected final InternalLogger logger;
     protected final InternalLogLevel internalLevel;
-
-    private final LogLevel level;
     private final ByteBufFormat byteBufFormat;
 
     /**
-     * Creates a new instance whose logger name is the fully qualified class
-     * name of the instance with hex dump enabled.
+     * 构造方法
      */
     public LoggingHandler() {
         this(DEFAULT_LEVEL);
     }
 
-    /**
-     * Creates a new instance whose logger name is the fully qualified class
-     * name of the instance.
-     *
-     * @param level the log level
-     */
     public LoggingHandler(LogLevel level) {
         this(level, ByteBufFormat.HEX_DUMP);
     }
 
-    /**
-     * Creates a new instance whose logger name is the fully qualified class
-     * name of the instance.
-     *
-     * @param level the log level
-     * @param byteBufFormat the ByteBuf format
-     */
     public LoggingHandler(LogLevel level, ByteBufFormat byteBufFormat) {
         this.level = ObjectUtil.checkNotNull(level, "level");
         this.byteBufFormat = ObjectUtil.checkNotNull(byteBufFormat, "byteBufFormat");
@@ -81,33 +69,14 @@ public class LoggingHandler extends ChannelDuplexHandler {
         internalLevel = level.toInternalLevel();
     }
 
-    /**
-     * Creates a new instance with the specified logger name and with hex dump
-     * enabled.
-     *
-     * @param clazz the class type to generate the logger for
-     */
     public LoggingHandler(Class<?> clazz) {
         this(clazz, DEFAULT_LEVEL);
     }
 
-    /**
-     * Creates a new instance with the specified logger name.
-     *
-     * @param clazz the class type to generate the logger for
-     * @param level the log level
-     */
     public LoggingHandler(Class<?> clazz, LogLevel level) {
         this(clazz, level, ByteBufFormat.HEX_DUMP);
     }
 
-    /**
-     * Creates a new instance with the specified logger name.
-     *
-     * @param clazz the class type to generate the logger for
-     * @param level the log level
-     * @param byteBufFormat the ByteBuf format
-     */
     public LoggingHandler(Class<?> clazz, LogLevel level, ByteBufFormat byteBufFormat) {
         ObjectUtil.checkNotNull(clazz, "clazz");
         this.level = ObjectUtil.checkNotNull(level, "level");
@@ -116,32 +85,14 @@ public class LoggingHandler extends ChannelDuplexHandler {
         internalLevel = level.toInternalLevel();
     }
 
-    /**
-     * Creates a new instance with the specified logger name using the default log level.
-     *
-     * @param name the name of the class to use for the logger
-     */
     public LoggingHandler(String name) {
         this(name, DEFAULT_LEVEL);
     }
 
-    /**
-     * Creates a new instance with the specified logger name.
-     *
-     * @param name the name of the class to use for the logger
-     * @param level the log level
-     */
     public LoggingHandler(String name, LogLevel level) {
         this(name, level, ByteBufFormat.HEX_DUMP);
     }
 
-    /**
-     * Creates a new instance with the specified logger name.
-     *
-     * @param name the name of the class to use for the logger
-     * @param level the log level
-     * @param byteBufFormat the ByteBuf format
-     */
     public LoggingHandler(String name, LogLevel level, ByteBufFormat byteBufFormat) {
         ObjectUtil.checkNotNull(name, "name");
 
