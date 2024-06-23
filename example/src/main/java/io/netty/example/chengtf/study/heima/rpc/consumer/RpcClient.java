@@ -24,7 +24,7 @@ public class RpcClient {
 
     public static void main(String[] args) {
         NioEventLoopGroup group = new NioEventLoopGroup();
-        LoggingHandler LOGGING_HANDLER = new LoggingHandler(LogLevel.DEBUG);
+        LoggingHandler LOGGING_HANDLER = new LoggingHandler(LogLevel.INFO);
         MessageCodecSharable MESSAGE_CODEC = new MessageCodecSharable();
         RpcResponseMessageHandler RPC_HANDLER = new RpcResponseMessageHandler();
         try {
@@ -47,7 +47,7 @@ public class RpcClient {
                     "sayHello",
                     String.class,
                     new Class[]{String.class},
-                    new Object[]{"张三"}
+                    new Object[]{"成腾飞"}
             )).addListener(promise -> {
                 if (!promise.isSuccess()) {
                     Throwable cause = promise.cause();
@@ -61,4 +61,5 @@ public class RpcClient {
             group.shutdownGracefully();
         }
     }
+
 }

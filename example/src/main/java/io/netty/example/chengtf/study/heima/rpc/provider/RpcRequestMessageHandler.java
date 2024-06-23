@@ -30,8 +30,8 @@ public class RpcRequestMessageHandler extends SimpleChannelInboundHandler<RpcReq
             HelloService service = (HelloService)
                     BeanFactory.getService(Class.forName(message.getInterfaceName()));
             Method method = service.getClass().getMethod(message.getMethodName(), message.getParameterTypes());
-            Object invoke = method.invoke(service, message.getParameterValue());
-            response.setReturnValue(invoke);
+            Object result = method.invoke(service, message.getParameterValue());
+            response.setReturnValue(result);
         } catch (Exception e) {
             e.printStackTrace();
             String msg = e.getCause().getMessage();

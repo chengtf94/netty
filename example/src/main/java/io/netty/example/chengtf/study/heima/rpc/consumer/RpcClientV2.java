@@ -94,7 +94,7 @@ public class RpcClientV2 {
      */
     private static void initChannel() {
         NioEventLoopGroup group = new NioEventLoopGroup();
-        LoggingHandler LOGGING_HANDLER = new LoggingHandler(LogLevel.DEBUG);
+        LoggingHandler LOGGING_HANDLER = new LoggingHandler(LogLevel.INFO);
         MessageCodecSharable MESSAGE_CODEC = new MessageCodecSharable();
         RpcResponseMessageHandler RPC_HANDLER = new RpcResponseMessageHandler();
         Bootstrap bootstrap = new Bootstrap();
