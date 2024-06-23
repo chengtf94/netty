@@ -28,7 +28,7 @@ public class NettyClient {
     private static ExecutorService executor = Executors.newFixedThreadPool(
             Runtime.getRuntime().availableProcessors()
     );
-    private static NettyClientHandler client;
+    private static NettyClientHandler clientHandler;
     private int count = 0;
 
     /**
@@ -42,16 +42,16 @@ public class NettyClient {
                     System.out.println("(proxy, method, args) 进入...." + (++count) + " 次");
 
                     // 初始化客户端
-                    if (client == null) {
+                    if (clientHandler == null) {
                         initClient();
                     }
 
                     // 设置要发给服务器端的信息
                     // providerName 协议头 args[0] 就是客户端调用api hello(???), 参数
-                    client.setPara(providerName + args[0]);
+                    clientHandler.setPara(providerName + args[0]);
 
                     //
-                    return executor.submit(client).get();
+                    return executor.submit(clientHandler).get();
 
                 });
     }
@@ -60,7 +60,7 @@ public class NettyClient {
      * 初始化客户端
      */
     private static void initClient() {
-        client = new NettyClientHandler();
+        clientHandler = new NettyClientHandler();
         // 创建EventLoopGroup
         NioEventLoopGroup group = new NioEventLoopGroup();
         Bootstrap bootstrap = new Bootstrap();
@@ -73,7 +73,7 @@ public class NettyClient {
                         ChannelPipeline pipeline = ch.pipeline();
                         pipeline.addLast(new StringDecoder());
                         pipeline.addLast(new StringEncoder());
-                        pipeline.addLast(client);
+                        pipeline.addLast(clientHandler);
                     }
                 });
 
