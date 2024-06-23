@@ -1,4 +1,4 @@
-package io.netty.example.chengtf.study.heima.rpc;
+package io.netty.example.chengtf.study.heima.rpc.consumer;
 
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
@@ -6,7 +6,6 @@ import io.netty.channel.ChannelInitializer;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
-import io.netty.example.chengtf.study.heima.rpc.consumer.RpcResponseMessageHandler;
 import io.netty.example.chengtf.study.heima.rpc.message.RpcRequestMessage;
 import io.netty.example.chengtf.study.heima.common.protocol.MessageCodecSharable;
 import io.netty.example.chengtf.study.heima.common.protocol.ProcotolFrameDecoder;
@@ -20,8 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.lang.reflect.Proxy;
 
 @Slf4j
-public class RpcClientManager {
-
+public class RpcClientV2 {
 
     public static void main(String[] args) {
         HelloService service = getProxyService(HelloService.class);
@@ -30,11 +28,13 @@ public class RpcClientManager {
 //        System.out.println(service.sayHello("wangwu"));
     }
 
-    // 创建代理类
+    /**
+     * 创建代理类
+     */
     public static <T> T getProxyService(Class<T> serviceClass) {
         ClassLoader loader = serviceClass.getClassLoader();
         Class<?>[] interfaces = new Class[]{serviceClass};
-        //                                                            sayHello  "张三"
+        // sayHello  "张三"
         Object o = Proxy.newProxyInstance(loader, interfaces, (proxy, method, args) -> {
             // 1. 将方法调用转换为 消息对象
             int sequenceId = SequenceIdGenerator.nextId();
@@ -59,7 +59,7 @@ public class RpcClientManager {
 
             // 4. 等待 promise 结果
             promise.await();
-            if(promise.isSuccess()) {
+            if (promise.isSuccess()) {
                 // 调用正常
                 return promise.getNow();
             } else {
@@ -73,7 +73,9 @@ public class RpcClientManager {
     private static Channel channel = null;
     private static final Object LOCK = new Object();
 
-    // 获取唯一的 channel 对象
+    /**
+     * 获取唯一的 channel 对象
+     */
     public static Channel getChannel() {
         if (channel != null) {
             return channel;
@@ -87,7 +89,9 @@ public class RpcClientManager {
         }
     }
 
-    // 初始化 channel 方法
+    /**
+     * 初始化channel
+     */
     private static void initChannel() {
         NioEventLoopGroup group = new NioEventLoopGroup();
         LoggingHandler LOGGING_HANDLER = new LoggingHandler(LogLevel.DEBUG);
