@@ -1,9 +1,9 @@
-package io.netty.example.chengtf.study.heima.rpc.consumer;
+package io.netty.example.chengtf.study.heima.rpc.consumer.handler;
 
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
-import io.netty.example.chengtf.study.heima.rpc.message.RpcResponseMessage;
+import io.netty.example.chengtf.study.heima.rpc.provider.message.RpcResponseMessage;
 import io.netty.util.concurrent.Promise;
 import lombok.extern.slf4j.Slf4j;
 

@@ -6,7 +6,6 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.example.chengtf.study.heima.chat.client.message.*;
-import io.netty.example.chengtf.study.heima.chat.message.*;
 import io.netty.example.chengtf.study.heima._0common.protocol.MessageCodecSharable;
 import io.netty.example.chengtf.study.heima._0common.protocol.ProcotolFrameDecoder;
 import io.netty.example.chengtf.study.heima.chat.server.message.LoginResponseMessage;

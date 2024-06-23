@@ -1,10 +1,9 @@
 package io.netty.example.chengtf.study.heima._0common.protocol;
 
 import io.netty.example.chengtf.study.heima.chat.client.message.*;
-import io.netty.example.chengtf.study.heima.chat.message.*;
 import io.netty.example.chengtf.study.heima.chat.server.message.*;
-import io.netty.example.chengtf.study.heima.rpc.message.RpcRequestMessage;
-import io.netty.example.chengtf.study.heima.rpc.message.RpcResponseMessage;
+import io.netty.example.chengtf.study.heima.rpc.consumer.message.RpcRequestMessage;
+import io.netty.example.chengtf.study.heima.rpc.provider.message.RpcResponseMessage;
 import lombok.Data;
 
 import java.io.Serializable;

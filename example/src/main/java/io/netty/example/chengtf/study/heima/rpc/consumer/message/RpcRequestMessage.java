@@ -1,4 +1,4 @@
-package io.netty.example.chengtf.study.heima.rpc.message;
+package io.netty.example.chengtf.study.heima.rpc.consumer.message;
 
 import io.netty.example.chengtf.study.heima._0common.protocol.Message;
 import lombok.Getter;

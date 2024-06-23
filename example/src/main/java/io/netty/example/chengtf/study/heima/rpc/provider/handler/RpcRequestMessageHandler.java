@@ -1,10 +1,10 @@
-package io.netty.example.chengtf.study.heima.rpc.provider;
+package io.netty.example.chengtf.study.heima.rpc.provider.handler;
 
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
-import io.netty.example.chengtf.study.heima.rpc.message.RpcRequestMessage;
-import io.netty.example.chengtf.study.heima.rpc.message.RpcResponseMessage;
+import io.netty.example.chengtf.study.heima.rpc.consumer.message.RpcRequestMessage;
+import io.netty.example.chengtf.study.heima.rpc.provider.message.RpcResponseMessage;
 import io.netty.example.chengtf.study.heima.rpc.api.HelloService;
 import io.netty.example.chengtf.study.heima._0common.BeanFactory;
 import lombok.extern.slf4j.Slf4j;
