@@ -1,0 +1,24 @@
+package io.netty.example.chengtf.study.heima.chat.client.message;
+
+
+import io.netty.example.chengtf.study.heima._0common.protocol.Message;
+import lombok.Data;
+import lombok.ToString;
+
+@Data
+@ToString(callSuper = true)
+public class GroupQuitRequestMessage extends Message {
+    private String groupName;
+
+    private String username;
+
+    public GroupQuitRequestMessage(String username, String groupName) {
+        this.groupName = groupName;
+        this.username = username;
+    }
+
+    @Override
+    public int getMessageType() {
+        return GroupQuitRequestMessage;
+    }
+}

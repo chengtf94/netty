@@ -1,6 +1,8 @@
 package io.netty.example.chengtf.study.heima._0common.protocol;
 
+import io.netty.example.chengtf.study.heima.chat.client.message.*;
 import io.netty.example.chengtf.study.heima.chat.message.*;
+import io.netty.example.chengtf.study.heima.chat.server.message.*;
 import io.netty.example.chengtf.study.heima.rpc.message.RpcRequestMessage;
 import io.netty.example.chengtf.study.heima.rpc.message.RpcResponseMessage;
 import lombok.Data;
@@ -52,20 +54,20 @@ public abstract class Message implements Serializable {
     private static final Map<Integer, Class<? extends Message>> messageClasses = new HashMap<>();
 
     static {
-        messageClasses.put(LoginRequestMessage, io.netty.example.chengtf.study.heima.chat.message.LoginRequestMessage.class);
-        messageClasses.put(LoginResponseMessage, io.netty.example.chengtf.study.heima.chat.message.LoginResponseMessage.class);
-        messageClasses.put(ChatRequestMessage, io.netty.example.chengtf.study.heima.chat.message.ChatRequestMessage.class);
-        messageClasses.put(ChatResponseMessage, io.netty.example.chengtf.study.heima.chat.message.ChatResponseMessage.class);
-        messageClasses.put(GroupCreateRequestMessage, io.netty.example.chengtf.study.heima.chat.message.GroupCreateRequestMessage.class);
-        messageClasses.put(GroupCreateResponseMessage, GroupCreateResponseMessage.class);
-        messageClasses.put(GroupJoinRequestMessage, GroupJoinRequestMessage.class);
+        messageClasses.put(LoginRequestMessage, io.netty.example.chengtf.study.heima.chat.client.message.LoginRequestMessage.class);
+        messageClasses.put(LoginResponseMessage, io.netty.example.chengtf.study.heima.chat.server.message.LoginResponseMessage.class);
+        messageClasses.put(ChatRequestMessage, io.netty.example.chengtf.study.heima.chat.client.message.ChatRequestMessage.class);
+        messageClasses.put(ChatResponseMessage, io.netty.example.chengtf.study.heima.chat.server.message.ChatResponseMessage.class);
+        messageClasses.put(GroupCreateRequestMessage, io.netty.example.chengtf.study.heima.chat.client.message.GroupCreateRequestMessage.class);
+        messageClasses.put(GroupCreateResponseMessage, io.netty.example.chengtf.study.heima.chat.server.message.GroupCreateResponseMessage.class);
+        messageClasses.put(GroupJoinRequestMessage, io.netty.example.chengtf.study.heima.chat.client.message.GroupJoinRequestMessage.class);
         messageClasses.put(GroupJoinResponseMessage, GroupJoinResponseMessage.class);
         messageClasses.put(GroupQuitRequestMessage, GroupQuitRequestMessage.class);
-        messageClasses.put(GroupQuitResponseMessage, GroupQuitResponseMessage.class);
-        messageClasses.put(GroupChatRequestMessage, GroupChatRequestMessage.class);
+        messageClasses.put(GroupQuitResponseMessage, io.netty.example.chengtf.study.heima.chat.server.message.GroupQuitResponseMessage.class);
+        messageClasses.put(GroupChatRequestMessage, io.netty.example.chengtf.study.heima.chat.client.message.GroupChatRequestMessage.class);
         messageClasses.put(GroupChatResponseMessage, GroupChatResponseMessage.class);
         messageClasses.put(GroupMembersRequestMessage, GroupMembersRequestMessage.class);
-        messageClasses.put(GroupMembersResponseMessage, GroupMembersResponseMessage.class);
+        messageClasses.put(GroupMembersResponseMessage, io.netty.example.chengtf.study.heima.chat.server.message.GroupMembersResponseMessage.class);
         messageClasses.put(RPC_MESSAGE_TYPE_REQUEST, RpcRequestMessage.class);
         messageClasses.put(RPC_MESSAGE_TYPE_RESPONSE, RpcResponseMessage.class);
     }
