@@ -681,7 +681,7 @@ public class HashedWheelTimer implements Timer {
             while (timeout != null) {
                 HashedWheelTimeout next = timeout.next;
                 if (timeout.remainingRounds <= 0) {
-                    // #1 若剩余轮数<=0，则移除该任务节点、并执行业务逻辑
+                    // #1 若剩余轮数 <= 0，则移除该任务节点、并执行业务逻辑
                     next = remove(timeout);
                     if (timeout.deadline <= deadline) {
                         timeout.expire();
@@ -689,10 +689,10 @@ public class HashedWheelTimer implements Timer {
                         throw new IllegalStateException(String.format("timeout.deadline (%d) > deadline (%d)", timeout.deadline, deadline));
                     }
                 } else if (timeout.isCancelled()) {
-                    // #2 若任务已取消，则移除该任务节点
+                    // #2 若剩余轮数 > 0 而且 任务已取消，则移除该任务节点
                     next = remove(timeout);
                 } else {
-                    // #3 否则，轮数减1
+                    // #3 剩余轮数 > 0 而且 任务未取消，轮数减1
                     timeout.remainingRounds--;
                 }
                 timeout = next;
